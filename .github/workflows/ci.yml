@@ -1,0 +1,40 @@
+name: DC Express AI Agent CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+        cache: "pip"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Check Python Syntax
+      run: |
+        python -m py_compile app.py pricing_engine.py
+
+    - name: Test Pricing Engine Calculations
+      run: |
+        python -c "
+        from pricing_engine import estimate_pricing
+        res = estimate_pricing('144 Xuân Thủy, Cầu Giấy, Hà Nội', 'Đông Mai, Quảng Ninh', 10.0, '1 thùng nước nuôi tôm')
+        assert 'options' in res
+        assert 'road_economy' in res['options']
+        assert res['options']['road_economy']['customer_price_vnd'] > 0
+        print('✅ Pricing Engine test passed successfully!')
+        "
