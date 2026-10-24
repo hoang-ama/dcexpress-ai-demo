@@ -118,23 +118,82 @@ def check_ollama_available():
         return False
 
 
-def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str) -> str:
-    """Gọi Gemini 1.5 Flash REST API khi chạy trên Cloud không có Ollama"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+@st.cache_data(ttl=60)
+def get_supported_gemini_models(api_key: str):
+    """Lấy danh sách các model Gemini khả dụng cho API Key này"""
+    if not api_key:
+        return [], "Chưa nhập API Key"
+    clean_key = api_key.strip()
+    # Thử gọi endpoint list models
+    for version in ["v1beta", "v1"]:
+        url = f"https://generativelanguage.googleapis.com/{version}/models?key={clean_key}"
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                models = [
+                    m["name"].replace("models/", "")
+                    for m in data.get("models", [])
+                    if "generateContent" in m.get("supportedGenerationMethods", [])
+                ]
+                if models:
+                    return models, ""
+            elif r.status_code == 400 or r.status_code == 403:
+                return [], f"API Key không hợp lệ hoặc chưa kích hoạt Generative Language API (HTTP {r.status_code})"
+        except Exception as e:
+            return [], f"Lỗi kết nối kiểm tra model: {e}"
+    return [], "Không tìm thấy model nào hỗ trợ generateContent cho key này"
+
+
+def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str, selected_model: str = "") -> str:
+    """Gọi Gemini API với cơ chế tự động thử các model và version phù hợp"""
+    clean_key = api_key.strip()
+
+    # Danh sách các candidate models ưu tiên
+    candidates_to_try = []
+    if selected_model:
+        candidates_to_try.append(selected_model)
+
+    # Thêm các model phổ biến nhất
+    for m in ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash"]:
+        if m not in candidates_to_try:
+            candidates_to_try.append(m)
+
     payload = {
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1000},
     }
-    r = requests.post(url, json=payload, timeout=30)
-    if r.status_code == 200:
-        res = r.json()
-        candidates = res.get("candidates", [])
-        if candidates:
-            return (
-                candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-            )
-    return f"Lỗi gọi Gemini API (HTTP {r.status_code}): {r.text}"
+
+    last_error = ""
+    # Thử lần lượt các model candidate qua cả v1beta và v1
+    for model in candidates_to_try:
+        for version in ["v1beta", "v1"]:
+            url = f"https://generativelanguage.googleapis.com/{version}/models/{model}:generateContent?key={clean_key}"
+            try:
+                r = requests.post(url, json=payload, timeout=25)
+                if r.status_code == 200:
+                    res = r.json()
+                    candidates = res.get("candidates", [])
+                    if candidates:
+                        return (
+                            candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        )
+                elif r.status_code != 404:
+                    # Nếu là lỗi quyền 400 hoặc 403 thì trả về ngay để báo rõ
+                    err_msg = r.json().get("error", {}).get("message", r.text)
+                    return f"Lỗi xác thực API Key ({r.status_code}): {err_msg}"
+                else:
+                    last_error = r.text
+            except Exception as e:
+                last_error = str(e)
+
+    # Nếu tất cả model đều bị 404
+    return (
+        f"⚠️ Không tìm thấy model phù hợp cho API Key của bạn.\n\n"
+        f"**Lưu ý**: Vui lòng sử dụng API Key được tạo từ **[Google AI Studio](https://aistudio.google.com/apikey)** (Key có định dạng bắt đầu bằng `AIzaSy...`).\n"
+        f"Chi tiết kỹ thuật: {last_error}"
+    )
 
 
 def parse_clean_json_regex(text: str):
@@ -153,7 +212,7 @@ def parse_clean_json_regex(text: str):
     return None
 
 
-def extract_clean_json(summary_text, api_key=""):
+def extract_clean_json(summary_text, api_key="", selected_model=""):
     """Trích xuất JSON sạch từ bản tổng kết thông tin đơn hàng"""
     # 1. Thử gọi qua Ollama nếu có
     if check_ollama_available():
@@ -188,6 +247,7 @@ def extract_clean_json(summary_text, api_key=""):
                 api_key,
                 EXTRACTION_SYSTEM_PROMPT,
                 f"Hãy trích xuất văn bản sau ra JSON sạch:\n{summary_text}",
+                selected_model,
             )
             res = parse_clean_json_regex(content)
             if res:
@@ -268,8 +328,22 @@ with st.sidebar:
         "Gemini API Key (Tùy chọn):",
         value=default_key,
         type="password",
-        help="Dùng cho bản deploy Online để kích hoạt Gemini 1.5 Flash khi không có Ollama",
+        help="Lấy API Key miễn phí từ https://aistudio.google.com/apikey (bắt đầu bằng AIzaSy...)",
     )
+
+    selected_gemini_model = "gemini-2.0-flash"
+    if user_api_key:
+        available_models, err = get_supported_gemini_models(user_api_key)
+        if available_models:
+            st.success(f"✅ Key hợp lệ! ({len(available_models)} models)")
+            selected_gemini_model = st.selectbox(
+                "Chọn Gemini Model:",
+                options=available_models,
+                index=0 if "gemini-2.0-flash" not in available_models else available_models.index("gemini-2.0-flash"),
+            )
+        elif err:
+            st.caption(f"ℹ️ {err}")
+            st.caption("👉 Lấy API key miễn phí tại: [Google AI Studio](https://aistudio.google.com/apikey)")
 
     st.markdown("---")
     st.subheader("🚀 Demo Nhanh 1-Click")
@@ -299,7 +373,7 @@ Ghi chú: Gửi trước 4h chiều, ngõ hẹp cách đường lớn 500m"""
         st.session_state.messages.append({"role": "assistant", "content": sample_response})
 
         # Tính toán cước phí và trích xuất JSON
-        json_data = extract_clean_json(sample_response, user_api_key)
+        json_data = extract_clean_json(sample_response, user_api_key, selected_gemini_model)
         pricing_res = estimate_pricing(
             sender_address="144 Đ. Xuân Thủy, Cầu Giấy, Hà Nội, Việt Nam",
             receiver_address="Đông Mai, Quảng Ninh, Việt Nam",
@@ -390,7 +464,7 @@ with col_chat:
                         [f"{m['role']}: {m['content']}" for m in st.session_state.messages]
                     )
                     full_response = call_gemini_api(
-                        user_api_key, CHAT_SYSTEM_PROMPT, chat_context
+                        user_api_key, CHAT_SYSTEM_PROMPT, chat_context, selected_gemini_model
                     )
                     message_placeholder.markdown(full_response)
                 except Exception as e:
@@ -412,7 +486,7 @@ with col_chat:
         # Kiểm tra nếu câu trả lời chứa cụm từ chốt đơn "Thông tin sau khi khách hàng cung cấp đủ"
         if "Thông tin sau khi khách hàng cung cấp đủ" in full_response:
             with st.spinner("🔄 Node JSON Extractor & Pricing Engine đang xử lý..."):
-                json_data = extract_clean_json(full_response, user_api_key)
+                json_data = extract_clean_json(full_response, user_api_key, selected_gemini_model)
                 if json_data:
                     # Kích hoạt Module 1: Pricing Calculation Engine
                     sender_addr = json_data.get("sender", {}).get("address", "")
