@@ -139,15 +139,18 @@ def get_supported_gemini_models(api_key: str):
             client = genai.Client(api_key=clean_key)
             models = []
             for m in client.models.list():
-                # Lọc các model hỗ trợ generateContent
                 methods = getattr(m, "supported_generation_methods", []) or []
                 if "generateContent" in methods:
                     name = getattr(m, "name", "").replace("models/", "")
                     if name:
                         models.append(name)
             if models:
+                # Đưa gemini-3.8-flash lên đầu danh sách nếu có
+                if "gemini-3.8-flash" in models:
+                    models.remove("gemini-3.8-flash")
+                    models.insert(0, "gemini-3.8-flash")
                 return models, ""
-        except Exception as e:
+        except Exception:
             pass
 
     # 2. Fallback REST API
@@ -163,6 +166,9 @@ def get_supported_gemini_models(api_key: str):
                     if "generateContent" in m.get("supportedGenerationMethods", [])
                 ]
                 if models:
+                    if "gemini-3.8-flash" in models:
+                        models.remove("gemini-3.8-flash")
+                        models.insert(0, "gemini-3.8-flash")
                     return models, ""
             elif r.status_code in [400, 403]:
                 return [], f"API Key không hợp lệ (HTTP {r.status_code})"
@@ -172,12 +178,12 @@ def get_supported_gemini_models(api_key: str):
     return [], "Không tìm thấy model nào hỗ trợ generateContent cho key này"
 
 
-def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str, selected_model: str = "") -> str:
-    """Gọi Gemini API ưu tiên qua official SDK google-genai, fallback REST API"""
+def _execute_gemini_call(api_key: str, model_name: str, system_prompt: str, user_prompt: str):
+    """Thực thi một cuộc gọi cụ thể đến model Gemini"""
     clean_key = api_key.strip()
-    model_name = (selected_model or "gemini-2.5-flash").replace("models/", "").strip()
+    clean_model = model_name.replace("models/", "").strip()
 
-    # PHƯƠNG ÁN 1: Sử dụng Google GenAI SDK (Chuẩn nhất)
+    # PHƯƠNG ÁN 1: Dùng Google GenAI SDK
     if HAS_GENAI_SDK:
         try:
             client = genai.Client(api_key=clean_key)
@@ -186,18 +192,17 @@ def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str, selected
                 system_instruction=system_prompt if system_prompt else None,
             )
             response = client.models.generate_content(
-                model=model_name,
+                model=clean_model,
                 contents=user_prompt,
                 config=config,
             )
             if response and response.text:
-                return response.text
+                return True, response.text
         except Exception as e:
-            # Nếu SDK gặp lỗi, thử tiếp REST API bên dưới
-            sdk_error = str(e)
+            pass
 
     # PHƯƠNG ÁN 2: Gọi trực tiếp REST API v1beta
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={clean_key}"
     payload = {
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1000},
@@ -211,14 +216,39 @@ def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str, selected
             res = r.json()
             candidates = res.get("candidates", [])
             if candidates:
-                return candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                return True, candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
         else:
             err_msg = r.json().get("error", {}).get("message", r.text)
-            return f"Lỗi gọi Gemini API [{model_name}] (HTTP {r.status_code}): {err_msg}"
+            return False, f"[{clean_model}] (HTTP {r.status_code}): {err_msg}"
     except Exception as e:
-        return f"Lỗi kết nối mạng đến Gemini API: {e}"
+        return False, f"Lỗi mạng: {e}"
 
-    return "Không nhận được phản hồi từ Gemini API."
+    return False, "Không nhận được phản hồi"
+
+
+def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str, selected_model: str = "") -> str:
+    """Gọi Gemini API tự động ưu tiên model gemini-3.8-flash theo thông báo mới nhất của Google"""
+    # Thứ tự thử các model: model được chọn -> gemini-3.8-flash -> gemini-3.8-flash-lite
+    models_to_try = []
+    if selected_model and selected_model != "gemini-2.5-flash":
+        models_to_try.append(selected_model)
+
+    for m in ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-2.5-flash"]:
+        if m not in models_to_try:
+            models_to_try.append(m)
+
+    last_error = ""
+    for model in models_to_try:
+        success, text = _execute_gemini_call(api_key, model, system_prompt, user_prompt)
+        if success:
+            return text
+        else:
+            last_error = text
+            # Nếu gặp lỗi deprecated model, tự động bỏ qua thử model tiếp theo
+            if "no longer available" in text.lower():
+                continue
+
+    return f"Lỗi gọi Gemini API: {last_error}"
 
 
 def parse_clean_json_regex(text: str):
@@ -356,18 +386,16 @@ with st.sidebar:
         help="Lấy API Key miễn phí từ https://aistudio.google.com/apikey",
     )
 
-    selected_gemini_model = "gemini-2.5-flash"
+    selected_gemini_model = "gemini-3.8-flash"
     if user_api_key:
         available_models, err = get_supported_gemini_models(user_api_key)
         if available_models:
             st.success(f"✅ Key hợp lệ! ({len(available_models)} models)")
 
-            # Ưu tiên chọn model flash nhanh nhất
+            # Ưu tiên chọn gemini-3.8-flash
             default_idx = 0
-            for fav in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
-                if fav in available_models:
-                    default_idx = available_models.index(fav)
-                    break
+            if "gemini-3.8-flash" in available_models:
+                default_idx = available_models.index("gemini-3.8-flash")
 
             selected_gemini_model = st.selectbox(
                 "Chọn Gemini Model:",
