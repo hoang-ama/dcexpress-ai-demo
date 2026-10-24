@@ -5,6 +5,14 @@ import requests
 import streamlit as st
 from pricing_engine import estimate_pricing
 
+# Kiểm tra thư viện Google GenAI SDK chính thức
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GENAI_SDK = True
+except ImportError:
+    HAS_GENAI_SDK = False
+
 # Cấu hình giao diện Streamlit
 st.set_page_config(
     page_title="DC Express AI Agent & DCHub API Demo", page_icon="📦", layout="wide"
@@ -120,11 +128,29 @@ def check_ollama_available():
 
 @st.cache_data(ttl=60)
 def get_supported_gemini_models(api_key: str):
-    """Lấy danh sách các model Gemini khả dụng cho API Key này"""
+    """Lấy danh sách các model Gemini khả dụng cho API Key này bằng SDK hoặc REST"""
     if not api_key:
         return [], "Chưa nhập API Key"
     clean_key = api_key.strip()
-    # Thử gọi endpoint list models
+
+    # 1. Thử dùng Google GenAI SDK chính thức
+    if HAS_GENAI_SDK:
+        try:
+            client = genai.Client(api_key=clean_key)
+            models = []
+            for m in client.models.list():
+                # Lọc các model hỗ trợ generateContent
+                methods = getattr(m, "supported_generation_methods", []) or []
+                if "generateContent" in methods:
+                    name = getattr(m, "name", "").replace("models/", "")
+                    if name:
+                        models.append(name)
+            if models:
+                return models, ""
+        except Exception as e:
+            pass
+
+    # 2. Fallback REST API
     for version in ["v1beta", "v1"]:
         url = f"https://generativelanguage.googleapis.com/{version}/models?key={clean_key}"
         try:
@@ -138,62 +164,61 @@ def get_supported_gemini_models(api_key: str):
                 ]
                 if models:
                     return models, ""
-            elif r.status_code == 400 or r.status_code == 403:
-                return [], f"API Key không hợp lệ hoặc chưa kích hoạt Generative Language API (HTTP {r.status_code})"
+            elif r.status_code in [400, 403]:
+                return [], f"API Key không hợp lệ (HTTP {r.status_code})"
         except Exception as e:
             return [], f"Lỗi kết nối kiểm tra model: {e}"
+
     return [], "Không tìm thấy model nào hỗ trợ generateContent cho key này"
 
 
 def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str, selected_model: str = "") -> str:
-    """Gọi Gemini API với cơ chế tự động thử các model và version phù hợp"""
+    """Gọi Gemini API ưu tiên qua official SDK google-genai, fallback REST API"""
     clean_key = api_key.strip()
+    model_name = (selected_model or "gemini-2.5-flash").replace("models/", "").strip()
 
-    # Danh sách các candidate models ưu tiên
-    candidates_to_try = []
-    if selected_model:
-        candidates_to_try.append(selected_model)
+    # PHƯƠNG ÁN 1: Sử dụng Google GenAI SDK (Chuẩn nhất)
+    if HAS_GENAI_SDK:
+        try:
+            client = genai.Client(api_key=clean_key)
+            config = types.GenerateContentConfig(
+                temperature=0.2,
+                system_instruction=system_prompt if system_prompt else None,
+            )
+            response = client.models.generate_content(
+                model=model_name,
+                contents=user_prompt,
+                config=config,
+            )
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            # Nếu SDK gặp lỗi, thử tiếp REST API bên dưới
+            sdk_error = str(e)
 
-    # Thêm các model phổ biến nhất
-    for m in ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash"]:
-        if m not in candidates_to_try:
-            candidates_to_try.append(m)
-
+    # PHƯƠNG ÁN 2: Gọi trực tiếp REST API v1beta
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
     payload = {
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-        "systemInstruction": {"parts": [{"text": system_prompt}]},
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1000},
     }
+    if system_prompt:
+        payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
 
-    last_error = ""
-    # Thử lần lượt các model candidate qua cả v1beta và v1
-    for model in candidates_to_try:
-        for version in ["v1beta", "v1"]:
-            url = f"https://generativelanguage.googleapis.com/{version}/models/{model}:generateContent?key={clean_key}"
-            try:
-                r = requests.post(url, json=payload, timeout=25)
-                if r.status_code == 200:
-                    res = r.json()
-                    candidates = res.get("candidates", [])
-                    if candidates:
-                        return (
-                            candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        )
-                elif r.status_code != 404:
-                    # Nếu là lỗi quyền 400 hoặc 403 thì trả về ngay để báo rõ
-                    err_msg = r.json().get("error", {}).get("message", r.text)
-                    return f"Lỗi xác thực API Key ({r.status_code}): {err_msg}"
-                else:
-                    last_error = r.text
-            except Exception as e:
-                last_error = str(e)
+    try:
+        r = requests.post(url, json=payload, timeout=30)
+        if r.status_code == 200:
+            res = r.json()
+            candidates = res.get("candidates", [])
+            if candidates:
+                return candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        else:
+            err_msg = r.json().get("error", {}).get("message", r.text)
+            return f"Lỗi gọi Gemini API [{model_name}] (HTTP {r.status_code}): {err_msg}"
+    except Exception as e:
+        return f"Lỗi kết nối mạng đến Gemini API: {e}"
 
-    # Nếu tất cả model đều bị 404
-    return (
-        f"⚠️ Không tìm thấy model phù hợp cho API Key của bạn.\n\n"
-        f"**Lưu ý**: Vui lòng sử dụng API Key được tạo từ **[Google AI Studio](https://aistudio.google.com/apikey)** (Key có định dạng bắt đầu bằng `AIzaSy...`).\n"
-        f"Chi tiết kỹ thuật: {last_error}"
-    )
+    return "Không nhận được phản hồi từ Gemini API."
 
 
 def parse_clean_json_regex(text: str):
@@ -328,18 +353,26 @@ with st.sidebar:
         "Gemini API Key (Tùy chọn):",
         value=default_key,
         type="password",
-        help="Lấy API Key miễn phí từ https://aistudio.google.com/apikey (bắt đầu bằng AIzaSy...)",
+        help="Lấy API Key miễn phí từ https://aistudio.google.com/apikey",
     )
 
-    selected_gemini_model = "gemini-2.0-flash"
+    selected_gemini_model = "gemini-2.5-flash"
     if user_api_key:
         available_models, err = get_supported_gemini_models(user_api_key)
         if available_models:
             st.success(f"✅ Key hợp lệ! ({len(available_models)} models)")
+
+            # Ưu tiên chọn model flash nhanh nhất
+            default_idx = 0
+            for fav in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+                if fav in available_models:
+                    default_idx = available_models.index(fav)
+                    break
+
             selected_gemini_model = st.selectbox(
                 "Chọn Gemini Model:",
                 options=available_models,
-                index=0 if "gemini-2.0-flash" not in available_models else available_models.index("gemini-2.0-flash"),
+                index=default_idx,
             )
         elif err:
             st.caption(f"ℹ️ {err}")
@@ -459,17 +492,18 @@ with col_chat:
 
             # TH2: Chạy Cloud Gemini nếu có Key
             elif user_api_key:
-                try:
-                    chat_context = "\n".join(
-                        [f"{m['role']}: {m['content']}" for m in st.session_state.messages]
-                    )
-                    full_response = call_gemini_api(
-                        user_api_key, CHAT_SYSTEM_PROMPT, chat_context, selected_gemini_model
-                    )
-                    message_placeholder.markdown(full_response)
-                except Exception as e:
-                    full_response = f"Lỗi kết nối Gemini: {e}"
-                    message_placeholder.error(full_response)
+                with st.spinner("Đang kết nối Gemini AI..."):
+                    try:
+                        chat_context = "\n".join(
+                            [f"{m['role']}: {m['content']}" for m in st.session_state.messages]
+                        )
+                        full_response = call_gemini_api(
+                            user_api_key, CHAT_SYSTEM_PROMPT, chat_context, selected_gemini_model
+                        )
+                        message_placeholder.markdown(full_response)
+                    except Exception as e:
+                        full_response = f"Lỗi xử lý Gemini: {e}"
+                        message_placeholder.error(full_response)
 
             # TH3: Chế độ Fallback thông báo
             else:
