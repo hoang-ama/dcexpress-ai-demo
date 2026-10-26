@@ -2,14 +2,18 @@
 
 [![DC Express AI Agent CI](https://github.com/hoang-ama/dcexpress-ai-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/hoang-ama/dcexpress-ai-demo/actions/workflows/ci.yml)
 
-Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn, Slot-filling thu thập 5 nhóm thông tin vận chuyển, tra cứu bảng cước RAG Pricing Engine (+30% Margin) và trích xuất JSON sạch chuẩn API DCHub Portal (`portal.dichung.vn`).
+Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn theo **Kịch bản tư vấn tự nhiên 5 giai đoạn (Kỹ thuật "Rả rích / Luộc ếch" - Progressive Disclosure)** giúp khách không bị ngợp form, tích hợp RAG Pricing Engine (+30% Margin), Order Confirmation và trích xuất JSON sạch chuẩn API DCHub Portal (`portal.dichung.vn`).
 
 ---
 
 ## 🌟 Tính Năng Nổi Bật
 
-1. **Slot Filling Thông Minh**:
-   - Tự động tiếp nhận và kiểm tra đủ 5 nhóm thông tin: Người gửi, Người nhận, Chi tiết hàng hóa, Thời gian gửi/nhận, Ghi chú đặc biệt.
+1. **Kịch Bản Tư Vấn Tự Nhiên (Progressive Slot-Filling "Luộc ếch")**:
+   - **Giai đoạn 1**: Thu thập nhẹ nhàng 3 thông tin critical để tính giá (Điểm gửi/nhận ➔ Hàng hóa ➔ Thời gian & Ghi chú). Không hỏi dồn dập tên/SĐT ngay từ đầu.
+   - **Giai đoạn 2**: Báo giá minh bạch (Đường bộ tiết kiệm / Hỏa tốc đường bay) & Chốt đồng ý giá với khách.
+   - **Giai đoạn 3**: Thu thập thông tin vận hành (Liên lạc 2 đầu ➔ Bên thanh toán ➔ Hình thức thanh toán).
+   - **Giai đoạn 4**: Tiện ích gia tăng (Hỏi nhanh về xuất VAT & Bảo hiểm hàng hóa bổ sung).
+   - **Giai đoạn 5**: Xuất Phiếu xác nhận đơn hàng (**Order Confirmation**), gửi nhà xe và tự động gửi thông tin tài xế cho khách ngay khi xếp tài.
 2. **DC Express Pricing Calculation Engine (Module 1)**:
    - Tự động nhận diện phân vùng tuyến đường (Nội thành, Liên tỉnh cùng miền, Bắc - Nam).
    - Quy đổi khối lượng thể tích theo chuẩn logistics: Đường bay (`/6000`), Đường bộ (`/5000`).
@@ -17,10 +21,10 @@ Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn, Sl
    - So sánh đồng thời 2 dịch vụ: 🚚 **Đường bộ tiết kiệm** và ✈️ **Hỏa tốc đường bay**.
 3. **Dual Engine Kiến Trúc Hybrid**:
    - **Local Mode (0đ Token)**: Chạy qua Ollama `qwen2.5:7b` On-premise.
-   - **Cloud Mode**: Tự động Fallback sang Google Gemini 1.5 Flash khi triển khai Online trên Server/Cloud.
-4. **DCHub Portal Integration**:
-   - Tự động bóc tách JSON Payload chuẩn hóa.
-   - Sẵn sàng kích hoạt API Tạo Lead tự động lên Portal Đi Chung.
+   - **Cloud Mode**: Tự động Fallback sang Google Gemini khi triển khai Online trên Server/Cloud.
+4. **DCHub Portal Integration & Driver Dispatch**:
+   - Tự động bóc tách JSON Payload chuẩn hóa theo schema đơn hàng hoàn chỉnh.
+   - Mô phỏng quy trình tạo Lead và Điều phối tài xế (Bắn SMS/Zalo thông tin tài xế cho khách).
 
 ---
 

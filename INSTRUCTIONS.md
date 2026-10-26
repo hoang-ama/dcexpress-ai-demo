@@ -24,50 +24,124 @@
 
 ---
 
-## 3. LUỒNG NGHIỆP VỤ & KỊCH BẢN MẪU (SLOT FILLING & SAMPLE FORMAT)
+---
 
-### A. Cú pháp mở đầu (Initial Greeting Prompt):
+## 3. LUỒNG NGHIỆP VỤ & KỊCH BẢN TƯ VẤN TỰ NHIÊN (KỸ THUẬT "RẢ RÍCH / LUỘC ẾCH")
+
+Nhằm giúp khách hàng không bị ngợp hay nản lòng khi thấy một form dài, AI Agent áp dụng nguyên tắc **Progressive Disclosure (Rả rích từng tí một)**:
+
 ```text
-Bạn vui lòng cung cấp thông tin sau để chúng tôi lên báo giá:
-- Người giao/ gửi hàng: tên/ điện thoại/ địa chỉ gửi
-- Người nhận hàng: tên/ điện thoại/ địa chỉ nhận
-- Thông tin hàng: tên hàng/ khối lượng/ kích thước/ số lượng/ ảnh chụp  
-- Thời gian mong muốn giao/ nhận: ngày/ giờ  
-- Ghi chú: ví dụ bốc xếp, ngõ hẹp...
+[BƯỚC 1: ĐIỂM GỬI & NHẬN] ➔ [BƯỚC 2: HÀNG HÓA] ➔ [BƯỚC 3: THỜI GIAN & GHI CHÚ]
+                                   │
+                                   ▼ (ĐỦ 3 NHÓM CRITICAL ĐỂ TÍNH GIÁ)
+                   [BÁO GIÁ CƯỚC & KHÁCH ĐỒNG Ý GIÁ]
+                                   │
+       ┌───────────────────────────┴───────────────────────────┐
+       ▼ (KHÁCH ĐỒNG Ý MỚI HỎI TIẾP)                          
+[BƯỚC 4: LIÊN LẠC 2 ĐẦU] ➔ [BƯỚC 5: BÊN TRẢ CƯỚC] ➔ [BƯỚC 6: CÁCH THANH TOÁN]
+                                   │
+                                   ▼ (ĐỦ THÔNG TIN VẬN HÀNH ĐƠN)
+               [HỎI THÊM OPTIONAL: VAT & BẢO HIỂM BỔ SUNG]
+                                   │
+                                   ▼
+             [ORDER CONFIRMATION: GỬI NHÀ XE & KHÁCH HÀNG]
+                                   │
+                                   ▼
+            [KHI XẾP TÀI: GỬI INFO TÀI XẾ CHO KHÁCH & NGƯỢC LẠI]
 ```
 
-### B. Quy tắc Slot Filling:
-AI đóng vai trò Trợ lý CSKH DC Express, kiểm tra 5 nhóm thông tin:
-1. Người gửi (Tên, SĐT, Địa chỉ gửi chi tiết).
-2. Người nhận (Tên, SĐT, Địa chỉ nhận chi tiết).
-3. Thông tin hàng (Tên hàng, Khối lượng/Kích thước/Số lượng).
-4. Thời gian gửi/nhận mong muốn.
-5. Ghi chú đặc biệt.
+### A. Chi tiết 5 Giai đoạn tương tác:
 
-Nếu thiếu hoặc chưa rõ trường nào, AI sẽ nhắc nhở lịch sự để khách hàng làm rõ.
+1. **Giai đoạn 1: Thu thập 3 thông tin Critical để tính giá**:
+   - **Bước 1**: Điểm gửi (lấy hàng) và Điểm nhận (trả hàng).
+   - **Bước 2**: Thông tin hàng hóa (Loại hàng, cân nặng kg, kích thước nếu có, ảnh chụp).
+   - **Bước 3**: Thời gian mong muốn gửi/nhận & Ghi chú vận chuyển (ngõ hẹp, bốc xếp...).
+   *(Tuyệt đối không hỏi Tên/SĐT ở giai đoạn này để tránh tâm lý dè chừng của khách).*
 
-### C. Mẫu chuẩn khi đủ thông tin (Complete Summary Format):
-```text
-Thông tin sau khi khách hàng cung cấp đủ
+2. **Giai đoạn 2: Báo giá & Xác nhận đồng ý giá**:
+   - Đủ 3 thông tin trên ➔ Pricing Engine tính toán ngay cước phí (+30% Margin).
+   - Đưa ra phương án rõ ràng (Đường bộ tiết kiệm / Hỏa tốc đường bay).
+   - Hỏi khách hàng xác nhận đồng ý mức giá. **Chỉ khi khách đồng ý mới bước sang giai đoạn tiếp theo**.
 
-Người gửi: Nhung/ ĐT: 0354327916
-Đ/c gửi hàng: 144 Đ. Xuân Thủy, Cầu Giấy, Hà Nội, Việt Nam
+3. **Giai đoạn 3: Thu thập thông tin Vận hành & Thanh toán (Đủ điều kiện vận hành)**:
+   - **Bước 4**: Thông tin liên lạc (Họ tên, SĐT đầu gửi và đầu nhận).
+   - **Bước 5**: Bên thanh toán cước (Đầu gửi hay Đầu nhận thanh toán).
+   - **Bước 6**: Cách thức thanh toán (Trả trước chuyển khoản hay Trả sau tiền mặt/COD).
+   *(Có đủ 3 thông tin này là ĐỦ ĐIỀU KIỆN VẬN HÀNH ĐƠN)*.
 
-Người nhận: anh Khánh/ ĐT: 0359920667
-Đ/c nhận hàng: Đông Mai, Quảng Ninh, Việt Nam
+4. **Giai đoạn 4: Thông tin Tiện ích gia tăng (Optional - Không bắt buộc)**:
+   - Có cần xuất hóa đơn thuế VAT hay không?
+   - Có muốn mua dịch vụ bảo hiểm bổ sung (khai giá hàng hóa) hay không?
 
-Thông tin hàng: 1 thùng nước nuôi tôm/ Khối lượng: 10kg
+5. **Giai đoạn 5: Order Confirmation & Điều phối tài xế**:
+   - Xuất **Phiếu xác nhận đơn hàng (Order Confirmation)** gửi cho Khách hàng và Nhà xe.
+   - Khi nhà xe xếp tài: Bắn thông tin tài xế (Tên, SĐT, Biển số xe) cho khách hàng và gửi thông tin khách hàng cho tài xế.
 
-Thời gian gửi: chiều ngày 22/10
-Thời gian mong muốn nhận: trước 24/10
+---
 
-Ghi chú: Gửi trước 4h chiều, ngõ hẹp cách đường lớn 500m
-```
+### B. Kịch bản hội thoại mẫu thực tế (Multi-turn Conversation):
 
-### D. Cấu trúc JSON sạch mục tiêu (DCHub Portal API Payload):
+- **AI**: "Dạ DC Express xin chào quý khách ạ! Em có thể hỗ trợ mình gửi hàng từ khu vực nào đến khu vực nào ạ?"
+- **Khách**: "Mình muốn gửi từ Cầu Giấy Hà Nội về Đông Mai, Quảng Ninh."
+- **AI**: "Dạ tuyến Hà Nội đi Quảng Ninh bên em có xe chạy liên tục trong ngày ạ. Anh/Chị cho em hỏi mình gửi mặt hàng gì, khối lượng khoảng bao nhiêu kg hoặc kích thước thế nào ạ?"
+- **Khách**: "1 thùng nước nuôi tôm, nặng tầm 10kg bạn nhé."
+- **AI**: "Dạ vâng ạ. Anh/Chị dự kiến khi nào gửi hàng và muốn người nhận nhận trước ngày giờ nào ạ? Chỗ mình gửi và nhận có ngõ hẹp hay cần hỗ trợ bốc xếp gì không ạ?"
+- **Khách**: "Gửi chiều nay 22/10 trước 4h chiều, nhận trước ngày 24/10 nhé. Chỗ gửi ngõ hơi hẹp cách đường lớn 500m."
+- **AI**: "Dạ em đã nắm được thông tin hàng của mình. Với đơn 1 thùng nước nuôi tôm 10kg từ Cầu Giấy về Đông Mai, Quảng Ninh:
+  🚚 Cước vận chuyển Gói Tiết kiệm đường bộ là: **118.000 đ** (Giao tận nơi 1-2 ngày).
+  Anh/Chị xem qua thấy mức giá và thời gian này đã phù hợp để bên em hỗ trợ lên đơn chưa ạ?"
+- **Khách**: "Ok giá hợp lý đấy em, lên đơn cho anh đi."
+- **AI**: "Dạ em cảm ơn anh đã tin tưởng DC Express! Để bên em sắp xếp tài xế qua lấy hàng đúng hẹn, anh cho em xin thông tin:
+  - Đầu gửi: Tên, SĐT và số nhà cụ thể tại Cầu Giấy.
+  - Đầu nhận: Tên, SĐT và địa chỉ người nhận tại Đông Mai ạ."
+- **Khách**: "Người gửi: Nhung, SĐT 0354327916, 144 Xuân Thủy, Cầu Giấy. Người nhận: anh Khánh, SĐT 0359920667, Đông Mai, Quảng Ninh."
+- **AI**: "Dạ đơn này bên mình đầu gửi thanh toán hay anh Khánh nhận hàng thanh toán ạ? Mình muốn thanh toán trước qua chuyển khoản hay trả tiền mặt khi giao nhận ạ?"
+- **Khách**: "Đầu gửi thanh toán tiền mặt lúc tài xế qua lấy nhé."
+- **AI**: "Dạ vâng ạ. Em hỏi thêm một chút là bên mình có cần xuất hóa đơn thuế VAT hoặc mua bảo hiểm hàng hóa bổ sung không ạ?"
+- **Khách**: "Không cần em nhé."
+- **AI**: "[PHIẾU XÁC NHẬN ĐƠN HÀNG - DC EXPRESS ORDER CONFIRMATION]
+  Mã đơn: DC-HNQN-20261025-01
+  Tuyến: 144 Xuân Thủy, Cầu Giấy ➔ Đông Mai, Quảng Ninh
+  Hàng hóa: 1 thùng nước nuôi tôm (10kg)
+  Gói cước: Đường bộ tiết kiệm - Tổng cước: 118.000 đ
+  Người gửi: Nhung (0354327916) - Lấy hàng: Chiều 22/10 trước 16h (Ngõ hẹp 500m)
+  Người nhận: anh Khánh (0359920667) - Nhận trước 24/10
+  Thanh toán: Đầu gửi trả tiền mặt khi lấy hàng
+  VAT: Không | Bảo hiểm: Không
+  Trạng thái: ĐÃ XÁC NHẬN ➔ ĐANG ĐIỀU PHỐI TÀI XẾ.
+  (Thông tin tài xế sẽ được gửi qua SMS/Zalo ngay khi nhà xe xếp chuyến!)"
+
+---
+
+### C. Cấu trúc JSON sạch mục tiêu (DCHub Portal API Payload):
 ```json
 {
-  "is_complete": true,
+  "order_code": "DC-HNQN-20261025-01",
+  "workflow_stage": "confirmed",
+  "is_price_agreed": true,
+  "route_info": {
+    "sender_area": "Hà Nội",
+    "receiver_area": "Quảng Ninh",
+    "route_type": "lien_tinh_cung_mien"
+  },
+  "cargo": {
+    "item_name": "thùng nước nuôi tôm",
+    "weight_kg": 10.0,
+    "dimensions_cm": "30x20x20",
+    "description": "1 thùng nước nuôi tôm"
+  },
+  "schedule": {
+    "pickup_time": "chiều ngày 22/10, trước 16:00",
+    "desired_delivery_time": "trước 24/10"
+  },
+  "notes": "Gửi trước 4h chiều, ngõ hẹp cách đường lớn 500m",
+  "pricing": {
+    "service_type": "Đường bộ tiết kiệm (DC Road)",
+    "base_cost_vnd": 91000,
+    "customer_quote_vnd": 118000,
+    "margin_percent": 30.0,
+    "is_accepted_by_customer": true
+  },
   "sender": {
     "name": "Nhung",
     "phone": "0354327916",
@@ -78,16 +152,26 @@ Ghi chú: Gửi trước 4h chiều, ngõ hẹp cách đường lớn 500m
     "phone": "0359920667",
     "address": "Đông Mai, Quảng Ninh, Việt Nam"
   },
-  "cargo": {
-    "item_name": "thùng nước nuôi tôm",
-    "weight_kg": 10.0,
-    "description": "1 thùng nước nuôi tôm"
+  "payment": {
+    "payer": "sender",
+    "payer_display": "Đầu gửi thanh toán",
+    "payment_method": "postpaid_cash",
+    "payment_method_display": "Tiền mặt khi lấy hàng",
+    "is_paid": false
   },
-  "schedule": {
-    "pickup_time": "chiều ngày 22/10",
-    "desired_delivery_time": "trước 24/10"
+  "optional_services": {
+    "vat_invoice": false,
+    "tax_code": null,
+    "additional_insurance": false
   },
-  "notes": "Gửi trước 4h chiều, ngõ hẹp cách đường lớn 500m"
+  "dispatch_and_driver": {
+    "status": "driver_assigned",
+    "driver_name": "Nguyễn Văn Tuấn",
+    "driver_phone": "0988123456",
+    "vehicle_plate": "29H-123.45",
+    "customer_notified": true,
+    "driver_notified": true
+  }
 }
 ```
 
