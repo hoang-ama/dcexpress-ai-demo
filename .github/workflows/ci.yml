@@ -26,7 +26,7 @@ jobs:
 
     - name: Check Python Syntax
       run: |
-        python -m py_compile app.py pricing_engine.py
+        python -m py_compile app.py pricing_engine.py zalo_middleware.py
 
     - name: Test Pricing Engine Calculations
       run: |
@@ -38,3 +38,18 @@ jobs:
         assert res['options']['road_economy']['customer_price_vnd'] > 0
         print('✅ Pricing Engine test passed successfully!')
         "
+
+    - name: Test Zalo Middleware Endpoints (FastAPI)
+      run: |
+        python -c "
+        from fastapi.testclient import TestClient
+        from zalo_middleware import app
+        client = TestClient(app)
+        res_h = client.get('/health')
+        assert res_h.status_code == 200
+        assert res_h.json()['status'] == 'healthy'
+        res_w = client.get('/webhook')
+        assert res_w.status_code == 200
+        print('✅ Zalo Middleware FastAPI health and webhook tests passed successfully!')
+        "
+

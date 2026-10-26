@@ -94,16 +94,19 @@ gantt
 ### 🔹 GIAI ĐOẠN 2: MIDDLEWARE OMNICHANNEL & TÍCH HỢP ZALO OA + CHATWOOT (ƯU TIÊN SỐ 1 - SPRINT TIẾP THEO)
 *Mục tiêu: Đưa con bot từ màn hình Streamlit nội bộ ra ngoài Zalo OA thật để khách hàng nhắn tin trực tiếp.*
 
-- **Việc 2.1**: **Phát triển FastAPI Webhook Service (`zalo_middleware.py`)**:
-  - Tiếp nhận sự kiện webhook từ Zalo OpenAPI (`user_send_text`, `user_send_image`).
-  - Xử lý bất đồng bộ (`BackgroundTasks` hoặc Celery/Redis) để phản hồi HTTP 200 OK cho Zalo server trong vòng dưới 2 giây, tránh timeout.
-- **Việc 2.2**: **Quản lý Hội thoại & Phiên làm việc (Session Management)**:
-  - Lưu ánh xạ: `zalo_user_id` ➔ `conversation_session_id`.
-  - Lưu trạng thái đang ở Giai đoạn nào trong 5 giai đoạn (Redis / SQLite / PostgreSQL).
-- **Việc 2.3**: **Tích hợp Tự động làm mới Token (Zalo OAuth Auto-Renew)**:
+- [x] **Việc 2.1**: **Phát triển FastAPI Webhook Service (`zalo_middleware.py`)**:
+  - Đã hoàn thành core service FastAPI hỗ trợ bất đồng bộ qua `BackgroundTasks` (phản hồi HTTP 200 OK ngay < 100ms cho Zalo OpenAPI, tránh timeout).
+  - Tích hợp Dual LLM (Local Ollama & Gemini 3.8 Flash Interactions API) với System Prompt luộc ếch 5 giai đoạn.
+  - Tích hợp Pricing Engine (+30% Margin) và trích xuất JSON Lead bắn sang DCHub Portal.
+  - Có endpoint giả lập `/simulate/message`, kiểm tra trạng thái `/health`, và quản lý `/sessions`.
+- [x] **Việc 2.2**: **Quản lý Hội thoại & Phiên làm việc (Session Management)**:
+  - Lưu ánh xạ: `zalo_user_id` ➔ `UserSession` (in-memory, kiến trúc sẵn sàng cắm Redis).
+  - Tự động theo dõi và cập nhật trạng thái Giai đoạn từ 1 đến 5 (Stage 1 -> Stage 5).
+- [ ] **Việc 2.3**: **Tích hợp Tự động làm mới Token (Zalo OAuth Auto-Renew)**:
   - Cấu hình Cronjob tự động dùng `refresh_token` để lấy `access_token` mới sau mỗi 23 giờ (tránh bị gián đoạn tin nhắn).
-- **Việc 2.4**: **Tích hợp Chatwoot (Human-in-the-Loop)**:
-  - Khi khách gõ *"Gặp nhân viên"*, *"Khiếu nại trễ hàng"*, hoặc AI phát hiện khách bực tức / không đồng ý giá ➔ Tự động gắn tag và chuyển luồng (Handover) sang Chatwoot cho tổng đài viên trực chat nhấc việc.
+- [ ] **Việc 2.4**: **Tích hợp Chatwoot (Human-in-the-Loop)**:
+  - Khi khách gõ *"Gặp nhân viên"*, *"Khiếu nại trễ hàng"*, hoặc AI phát hiện khách bực tức / không đồng ý giá ➔ Tự động gắn tag và chuyển luồng (Handover) sang Chatwoot cho tổng đài viên trực chat nhấc việc (đã có hook `trigger_chatwoot_handover` trong `zalo_middleware.py`).
+
 
 ---
 

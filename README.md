@@ -51,9 +51,16 @@ pip install -r requirements.txt
 # 4. (Tùy chọn) Chạy Ollama nếu có
 ollama run qwen2.5:7b
 
-# 5. Khởi chạy Streamlit UI
+# 5. Khởi chạy Streamlit Demo UI
 streamlit run app.py
+
+# 6. Khởi chạy Zalo OA Webhook Middleware (FastAPI)
+python zalo_middleware.py
+# Hoặc:
+uvicorn zalo_middleware:app --reload --port 8000
 ```
+
+> **API Documentation (Swagger UI)**: Truy cập `http://localhost:8000/docs` để kiểm tra tài liệu API và tương tác với endpoint `/simulate/message`, `/health`, `/webhook`.
 
 ---
 
