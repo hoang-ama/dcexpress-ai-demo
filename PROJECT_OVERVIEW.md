@@ -10,8 +10,8 @@
 
 ---
 
-## 2. QUY TRÌNH TƯ VẤN KHÁCH HÀNG TỰ NHIÊN 5 GIAI ĐOẠN (CHIẾN THUẬT "RẢ RÍCH / LUỘC ẾCH")
-Thay vì yêu cầu khách hàng điền một danh sách dài các trường thông tin (gây cảm giác ngợp form), AI Agent áp dụng nghệ thuật giao tiếp rả rích theo 5 giai đoạn:
+## 2. QUY TRÌNH TƯ VẤN KHÁCH HÀNG TỰ NHIÊN 5 GIAI ĐOẠN
+Thay vì yêu cầu khách hàng điền một danh sách dài các trường thông tin (gây cảm giác ngợp form), AI Agent áp dụng nghệ thuật giao tiếp từng bước theo 5 giai đoạn:
 
 ```text
 [GIAI ĐOẠN 1: CRITICAL TÍNH GIÁ] ──> [GIAI ĐOẠN 2: BÁO GIÁ & CHỐT GIÁ] ──> [GIAI ĐOẠN 3: VẬN HÀNH & THANH TOÁN]

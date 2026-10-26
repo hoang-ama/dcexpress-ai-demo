@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # 1. Zalo OA Webhook Middleware (FastAPI)
+  zalo-middleware:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dcexpress-zalo-middleware
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - ZALO_APP_ID=${ZALO_APP_ID:-}
+      - ZALO_SECRET_KEY=${ZALO_SECRET_KEY:-}
+      - ZALO_OA_ACCESS_TOKEN=${ZALO_OA_ACCESS_TOKEN:-}
+      - ZALO_OA_REFRESH_TOKEN=${ZALO_OA_REFRESH_TOKEN:-}
+      - ZALO_TOKEN_FILE=/app/data/.zalo_tokens.json
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=gemini-3.8-flash
+      - OLLAMA_API_URL=http://host.docker.internal:11434/api/chat
+      - CHATWOOT_BASE_URL=${CHATWOOT_BASE_URL:-https://app.chatwoot.com}
+      - CHATWOOT_API_KEY=${CHATWOOT_API_KEY:-}
+      - CHATWOOT_ACCOUNT_ID=${CHATWOOT_ACCOUNT_ID:-1}
+      - CHATWOOT_INBOX_ID=${CHATWOOT_INBOX_ID:-1}
+      - DCHUB_PORTAL_API_URL=${DCHUB_PORTAL_API_URL:-https://portal.dichung.vn/api/v1/leads}
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["uvicorn", "zalo_middleware:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  # 2. Streamlit Interactive Demo UI
+  streamlit-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dcexpress-streamlit-demo
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OLLAMA_API_URL=http://host.docker.internal:11434/api/chat
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

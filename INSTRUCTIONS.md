@@ -26,7 +26,7 @@
 
 ---
 
-## 3. LUỒNG NGHIỆP VỤ & KỊCH BẢN TƯ VẤN TỰ NHIÊN (KỸ THUẬT "RẢ RÍCH / LUỘC ẾCH")
+## 3. LUỒNG NGHIỆP VỤ & KỊCH BẢN TƯ VẤN TỰ NHIÊN
 
 Nhằm giúp khách hàng không bị ngợp hay nản lòng khi thấy một form dài, AI Agent áp dụng nguyên tắc **Progressive Disclosure (Rả rích từng tí một)**:
 

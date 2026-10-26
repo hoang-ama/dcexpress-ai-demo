@@ -2,13 +2,13 @@
 
 [![DC Express AI Agent CI](https://github.com/hoang-ama/dcexpress-ai-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/hoang-ama/dcexpress-ai-demo/actions/workflows/ci.yml)
 
-Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn theo **Kịch bản tư vấn tự nhiên 5 giai đoạn (Kỹ thuật "Rả rích / Luộc ếch" - Progressive Disclosure)** giúp khách không bị ngợp form, tích hợp RAG Pricing Engine (+30% Margin), Order Confirmation và trích xuất JSON sạch chuẩn API DCHub Portal (`portal.dichung.vn`).
+Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn theo **Kịch bản tư vấn tự nhiên 5 giai đoạn (Progressive Disclosure)** giúp khách không bị ngợp form, tích hợp RAG Pricing Engine (+30% Margin), Order Confirmation và trích xuất JSON sạch chuẩn API DCHub Portal (`portal.dichung.vn`).
 
 ---
 
 ## 🌟 Tính Năng Nổi Bật
 
-1. **Kịch Bản Tư Vấn Tự Nhiên (Progressive Slot-Filling "Luộc ếch")**:
+1. **Kịch Bản Tư Vấn Tự Nhiên (Progressive Slot-Filling**:
    - **Giai đoạn 1**: Thu thập nhẹ nhàng 3 thông tin critical để tính giá (Điểm gửi/nhận ➔ Hàng hóa ➔ Thời gian & Ghi chú). Không hỏi dồn dập tên/SĐT ngay từ đầu.
    - **Giai đoạn 2**: Báo giá minh bạch (Đường bộ tiết kiệm / Hỏa tốc đường bay) & Chốt đồng ý giá với khách.
    - **Giai đoạn 3**: Thu thập thông tin vận hành (Liên lạc 2 đầu ➔ Bên thanh toán ➔ Hình thức thanh toán).
@@ -60,9 +60,25 @@ python zalo_middleware.py
 uvicorn zalo_middleware:app --reload --port 8000
 ```
 
-> **API Documentation (Swagger UI)**: Truy cập `http://localhost:8000/docs` để kiểm tra tài liệu API và tương tác với endpoint `/simulate/message`, `/health`, `/webhook`.
+> **API Documentation (Swagger UI)**: Truy cập `http://localhost:8000/docs` để kiểm tra tài liệu API và tương tác với endpoint `/simulate/message`, `/health`, `/webhook`, `/oauth`, `/chatwoot`.  
+> 📖 **Hướng dẫn kết nối Zalo OA thật**: Xem tại **[ZALO_OA_INTEGRATION_GUIDE.md](file:///Users/minhhh/Downloads/Code/dcexpress-ai-demo/ZALO_OA_INTEGRATION_GUIDE.md)**.
 
 ---
+
+## 🐳 Triển Khai Nhanh Bằng Docker Compose (Production Ready)
+
+Hệ thống đã cấu hình sẵn Dockerfile và Docker Compose để chạy cả FastAPI Middleware và Streamlit UI trên máy chủ/VPS chỉ với 1 lệnh:
+
+```bash
+# Khởi động cả Middleware (Port 8000) và Streamlit (Port 8501)
+docker compose up -d --build
+
+# Xem log hoạt động
+docker compose logs -f zalo-middleware
+```
+
+---
+
 
 ## ☁️ Triển Khai Online Miễn Phí (Streamlit Community Cloud)
 

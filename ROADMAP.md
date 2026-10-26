@@ -21,7 +21,7 @@
                                                   │
                                                   ▼
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ LỚP 1: CORE AI ENGINE & TƯ VẤN TỰ NHIÊN (KỸ THUẬT RẢ RÍCH / LUỘC ẾCH)                           │
+│ LỚP 1: CORE AI ENGINE & TƯ VẤN TỰ NHIÊN                        │
 │ • GĐ 1: Tuyến & Hàng ➔ GĐ 2: Báo giá & Chốt ➔ GĐ 3: Vận hành & Trả ➔ GĐ 4: VAT ➔ GĐ 5: Xác nhận│
 │ • Dual Engine: Local Ollama (Qwen 2.5 7B) + Cloud Gemini 3.8 Flash (Interactions API)           │
 └─────────────────────────────────┬────────────────────────────────┬───────────────────────────────┘
@@ -44,7 +44,7 @@
 
 Cho đến thời điểm hiện tại, dự án đã hoàn thành trọn vẹn toàn bộ tầng **Lõi Nghiệp Vụ (Core Business Engine)**, **Giao diện Kiểm thử Tương tác (Streamlit Interactive App)** và **Cơ chế Dual LLM**:
 
-- [x] **1. Kịch bản Tư vấn Tự nhiên 5 Giai đoạn (Chiến thuật "Rả rích / Luộc ếch")**:
+- [x] **1. Kịch bản Tư vấn Tự nhiên 5 Giai đoạn **:
   - Không còn tình trạng xổ một tràng form dài bắt khách điền gây ngợp.
   - Phân tầng rõ rệt: Thu thập 3 thông tin critical ➔ Báo giá & Khách chốt ➔ Lấy thông tin liên lạc & thanh toán (đủ điều kiện vận hành) ➔ Hỏi VAT & Bảo hiểm ➔ Xuất **Phiếu xác nhận đơn hàng (Order Confirmation)**.
 - [x] **2. DC Express RAG Pricing Engine (`pricing_engine.py`)**:
@@ -75,9 +75,9 @@ gantt
     dateFormat  YYYY-MM-DD
     section Phase 1 (Core & Engine)
     Hoàn thiện Lõi AI, Pricing & Giao diện Demo       :done, p1, 2026-10-15, 2026-10-26
-    section Phase 2 (Zalo & Chatwoot)
-    Xây dựng FastAPI Webhook Zalo OA                  :active, p2_1, 2026-10-27, 2026-11-03
-    Tích hợp Chatwoot Handover (Human-in-the-loop)   :p2_2, 2026-11-04, 2026-11-10
+    section Phase 2 (Zalo & Chatwoot Middleware)
+    FastAPI Webhook & Quản lý Session Zalo OA         :done, p2_1, 2026-10-26, 2026-10-26
+    Tự động Auto-Renew OAuth Token & Chatwoot Handover:done, p2_2, 2026-10-26, 2026-10-26
     section Phase 3 (DCHub Backend)
     Kết nối API Real DCHub Portal (Auth & Sync Lead)  :p3_1, 2026-11-11, 2026-11-17
     Tự động hóa thông báo Zalo ZNS cho Khách & Tài xế:p3_2, 2026-11-18, 2026-11-24
@@ -96,16 +96,19 @@ gantt
 
 - [x] **Việc 2.1**: **Phát triển FastAPI Webhook Service (`zalo_middleware.py`)**:
   - Đã hoàn thành core service FastAPI hỗ trợ bất đồng bộ qua `BackgroundTasks` (phản hồi HTTP 200 OK ngay < 100ms cho Zalo OpenAPI, tránh timeout).
-  - Tích hợp Dual LLM (Local Ollama & Gemini 3.8 Flash Interactions API) với System Prompt luộc ếch 5 giai đoạn.
+  - Tích hợp Dual LLM (Local Ollama & Gemini 3.8 Flash Interactions API) với System Prompt 5 giai đoạn.
   - Tích hợp Pricing Engine (+30% Margin) và trích xuất JSON Lead bắn sang DCHub Portal.
   - Có endpoint giả lập `/simulate/message`, kiểm tra trạng thái `/health`, và quản lý `/sessions`.
 - [x] **Việc 2.2**: **Quản lý Hội thoại & Phiên làm việc (Session Management)**:
   - Lưu ánh xạ: `zalo_user_id` ➔ `UserSession` (in-memory, kiến trúc sẵn sàng cắm Redis).
   - Tự động theo dõi và cập nhật trạng thái Giai đoạn từ 1 đến 5 (Stage 1 -> Stage 5).
-- [ ] **Việc 2.3**: **Tích hợp Tự động làm mới Token (Zalo OAuth Auto-Renew)**:
-  - Cấu hình Cronjob tự động dùng `refresh_token` để lấy `access_token` mới sau mỗi 23 giờ (tránh bị gián đoạn tin nhắn).
-- [ ] **Việc 2.4**: **Tích hợp Chatwoot (Human-in-the-Loop)**:
-  - Khi khách gõ *"Gặp nhân viên"*, *"Khiếu nại trễ hàng"*, hoặc AI phát hiện khách bực tức / không đồng ý giá ➔ Tự động gắn tag và chuyển luồng (Handover) sang Chatwoot cho tổng đài viên trực chat nhấc việc (đã có hook `trigger_chatwoot_handover` trong `zalo_middleware.py`).
+- [x] **Việc 2.3**: **Tích hợp Tự động làm mới Token (Zalo OAuth Auto-Renew - `zalo_oauth_manager.py`)**:
+  - Đã xây dựng module `ZaloOAuthManager`: tự động kiểm tra hạn token, tự động gọi API gia hạn trước 1 giờ khi sắp hết hạn và lưu bảo mật vào `.zalo_tokens.json`.
+  - Hỗ trợ đổi Authorization Code (`POST /oauth/exchange-code`), chủ động refresh (`POST /oauth/refresh-token`) và xem trạng thái (`GET /oauth/status`).
+- [x] **Việc 2.4**: **Tích hợp Chatwoot Live Agent (Human-in-the-Loop hai chiều - `chatwoot_service.py`)**:
+  - Chiều Zalo ➔ Chatwoot: Khi khách yêu cầu gặp nhân viên hoặc khiếu nại ➔ Tự động tạo Contact, tạo Conversation gắn nhãn `[DC_EXPRESS_ESCALATED]`, đẩy toàn bộ lịch sử 5 giai đoạn sang Chatwoot cho tư vấn viên.
+  - Chiều Chatwoot ➔ Zalo: Endpoint `POST /chatwoot/webhook` nhận phản hồi của tư vấn viên và tự động bắn tin nhắn trực tiếp về Zalo cho khách hàng.
+
 
 
 ---
@@ -160,13 +163,15 @@ gantt
 
 Để dự án duy trì tốc độ phát triển nhanh nhất, dưới đây là các đầu việc ưu tiên cần thực hiện ngay trong **Sprint tiếp theo (Tuần tới)**:
 
-| Thứ tự | Đầu việc cụ thể | Phụ trách / Công nghệ | Thời gian dự kiến | Sản phẩm đầu ra |
+| Thứ tự | Đầu việc cụ thể | Phụ trách / Công nghệ | Trạng thái | Sản phẩm đầu ra |
 |:---:|---|---|:---:|---|
-| **1** | Viết file mã nguồn `zalo_middleware.py` (FastAPI) | Backend / Python | 2 ngày | File middleware nhận webhook Zalo OA |
-| **2** | Đăng ký & Xin cấp quyền Webhook trên Zalo Developer Portal | Quản trị Zalo OA / Đi Chung | 1 ngày | Webhook URL được verify thành công |
-| **3** | Cấu hình Nginx Reverse Proxy + SSL Certbot trên VPS | DevOps | 1 ngày | Endpoint `https://api.dichung.vn/zalo/webhook` |
-| **4** | Nối Zalo Middleware với Logic `pricing_engine.py` & Slot-filling | AI Engineer | 2 ngày | Khách chat Zalo ➔ Bot tự tính giá và chốt đơn |
-| **5** | Tích hợp Webhook Handover sang Chatwoot | Fullstack Dev | 2 ngày | Nhân viên tiếp quản khi khách yêu cầu hỗ trợ |
+| **1** | Viết file mã nguồn `zalo_middleware.py` (FastAPI) | Backend / Python | ✅ **Đã hoàn thành** | Core Webhook Service tiếp nhận & phản hồi < 100ms |
+| **2** | Tự động làm mới OAuth Token (`zalo_oauth_manager.py`) | Backend / Python | ✅ **Đã hoàn thành** | Auto-renew token trước 1h, lưu `.zalo_tokens.json` |
+| **3** | Tích hợp Chatwoot Live Agent (`chatwoot_service.py`) | Fullstack / Python | ✅ **Đã hoàn thành** | Handover 2 chiều giữa Zalo và Chatwoot |
+| **4** | Container hóa hệ thống (`Dockerfile`, `docker-compose.yml`) | DevOps | ✅ **Đã hoàn thành** | Khởi chạy 1 lệnh `docker compose up -d` |
+| **5** | Đăng ký & Xin cấp quyền Webhook trên Zalo Developer | Quản trị Zalo OA / Đi Chung | ⏳ **Đang triển khai** | Làm theo [ZALO_OA_INTEGRATION_GUIDE.md](file:///Users/minhhh/Downloads/Code/dcexpress-ai-demo/ZALO_OA_INTEGRATION_GUIDE.md) |
+| **6** | Kết nối Real API DCHub Portal (`portal.dichung.vn`) | Backend / Đi Chung | 📅 **Sprint tiếp theo** | Lấy API Key từ IT Đi Chung và map order payload |
+
 
 ---
 

@@ -28,6 +28,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from pricing_engine import estimate_pricing
+from zalo_oauth_manager import oauth_manager
+from chatwoot_service import chatwoot_service
 
 # Cấu hình Logging
 logging.basicConfig(
@@ -81,7 +83,7 @@ QUY TẮC NGÔN NGỮ BẮT BUỘC:
 - Nếu cần hỏi hình ảnh, hãy nói: "Anh/chị có hình ảnh kiện hàng chụp gửi em xem với nhé ạ".
 
 NGUYÊN TẮC VÀNG VỀ TƯ VẤN:
-"Rả rích từng tí một - Không làm khách ngợp khi nhìn form":
+"Rả rích từng bước một - Không làm khách ngợp khi nhìn form":
 Tuyệt đối KHÔNG gửi cả danh sách dài nhiều yêu cầu một lúc. Hãy tương tác từng nhóm thông tin theo đúng 5 giai đoạn:
 
 ══════════════════════════════════════════════════════════════
@@ -326,14 +328,15 @@ def extract_and_push_lead(session: UserSession) -> Optional[Dict[str, Any]]:
 # ZALO OPENAPI CLIENT: GỬI TIN NHẮN PHẢN HỒI CHO KHÁCH
 # ==============================================================================
 def send_zalo_message(user_id: str, text: str) -> bool:
-    """Gửi tin nhắn văn bản đến người dùng qua Zalo OA OpenAPI v3.0"""
-    if not ZALO_OA_ACCESS_TOKEN:
+    """Gửi tin nhắn văn bản đến người dùng qua Zalo OA OpenAPI v3.0 (tự động làm mới token)"""
+    access_token = oauth_manager.get_access_token()
+    if not access_token:
         logger.info(f"[SIMULATED ZALO OUTGOING] ➔ User {user_id}: {text[:80]}...")
         return True
 
     url = "https://openapi.zalo.me/v3.0/oa/message/cs"
     headers = {
-        "access_token": ZALO_OA_ACCESS_TOKEN,
+        "access_token": access_token,
         "Content-Type": "application/json",
     }
     payload = {
@@ -346,9 +349,16 @@ def send_zalo_message(user_id: str, text: str) -> bool:
         if res_data.get("error") == 0:
             logger.info(f"Đã gửi tin nhắn Zalo thành công đến User {user_id}")
             return True
-        else:
-            logger.error(f"Zalo API Error: {res_data}")
-            return False
+        elif res_data.get("error") == -216:
+            # Token hết hạn ngay trong lúc gọi, ép refresh và retry 1 lần
+            logger.warning("Zalo Access Token hết hạn (-216). Đang refresh và thử lại...")
+            ok, new_token = oauth_manager.refresh_access_token()
+            if ok:
+                headers["access_token"] = new_token
+                r_retry = requests.post(url, json=payload, headers=headers, timeout=10)
+                return r_retry.json().get("error") == 0
+        logger.error(f"Zalo API Error: {res_data}")
+        return False
     except Exception as e:
         logger.error(f"Lỗi kết nối Zalo OpenAPI: {e}")
         return False
@@ -365,16 +375,13 @@ def check_and_handle_handover(user_message: str, session: UserSession) -> bool:
         session.handover_to_human = True
         logger.info(f"Kích hoạt Handover cho Zalo User {session.user_id}")
         
-        # Bắn webhook sang Chatwoot nếu cấu hình
-        if CHATWOOT_WEBHOOK_URL:
-            try:
-                requests.post(
-                    CHATWOOT_WEBHOOK_URL,
-                    json={"user_id": session.user_id, "last_message": user_message, "status": "pending_human"},
-                    timeout=3
-                )
-            except Exception:
-                pass
+        # Chuyển giao hoàn chỉnh sang Chatwoot
+        chatwoot_res = chatwoot_service.handover_from_zalo(
+            user_id=session.user_id,
+            messages_history=session.messages,
+            trigger_reason=f"Khách hàng kích hoạt từ khóa: '{user_message}'",
+        )
+        logger.info(f"Kết quả Chatwoot handover: {chatwoot_res}")
         return True
     return False
 
@@ -445,9 +452,12 @@ def health_check():
         "ollama_local_up": check_ollama_available(),
         "gemini_api_configured": bool(GEMINI_API_KEY),
         "gemini_model": GEMINI_MODEL,
-        "zalo_access_token_configured": bool(ZALO_OA_ACCESS_TOKEN),
+        "zalo_token_valid": oauth_manager.is_token_valid(),
+        "zalo_has_refresh_token": bool(oauth_manager._tokens.get("refresh_token")),
+        "chatwoot_configured": chatwoot_service.is_configured(),
         "active_sessions_count": len(sessions_db),
     }
+
 
 
 @app.get("/webhook")
@@ -577,6 +587,103 @@ def reset_session(user_id: str):
     if user_id in sessions_db:
         del sessions_db[user_id]
     return {"status": "success", "message": f"Đã xóa phiên chat của user {user_id}"}
+
+
+# ==============================================================================
+# CHATWOOT WEBHOOK: NHẬN PHẢN HỒI TỪ NHÂN VIÊN TỔNG ĐÀI GỬI VỀ ZALO
+# ==============================================================================
+@app.post("/chatwoot/webhook")
+async def handle_chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
+    """
+    Tiếp nhận webhook từ Chatwoot khi nhân viên trả lời khách hàng.
+    Khi message_type == 'outgoing' (nhân viên gửi), tự động gửi tin nhắn đó về Zalo OA cho khách.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    event = payload.get("event")
+    logger.info(f"Nhận webhook từ Chatwoot: event={event}")
+
+    if event == "message_created":
+        msg_type = payload.get("message_type")
+        content = payload.get("content", "")
+        conversation = payload.get("conversation", {})
+        contact = payload.get("sender", {})
+
+        # Chỉ xử lý khi nhân viên (User/Agent) trả lời khách (outgoing)
+        if msg_type == "outgoing" and content:
+            # Lấy zalo_user_id từ custom attributes của contact
+            custom_attrs = contact.get("custom_attributes", {})
+            zalo_user_id = custom_attrs.get("zalo_user_id") or contact.get("identifier")
+
+            # Fallback: tìm qua session trong bộ nhớ
+            if not zalo_user_id:
+                for uid, s in sessions_db.items():
+                    if s.handover_to_human:
+                        zalo_user_id = uid
+                        break
+
+            if zalo_user_id:
+                logger.info(f"Đang chuyển tiếp tin nhắn của CSKH từ Chatwoot ➔ Zalo User {zalo_user_id}")
+                background_tasks.add_task(send_zalo_message, zalo_user_id, f"[Tư vấn viên DC Express]: {content}")
+                if zalo_user_id in sessions_db:
+                    sessions_db[zalo_user_id].add_message("assistant", f"[CSKH]: {content}")
+                return {"status": "forwarded_to_zalo", "user_id": zalo_user_id}
+            else:
+                logger.warning("Không tìm thấy zalo_user_id tương ứng trong payload Chatwoot")
+
+    return {"status": "ignored_or_processed", "event": event}
+
+
+# ==============================================================================
+# ZALO OAUTH MANAGEMENT ENDPOINTS (LÀM MỚI VÀ QUẢN LÝ TOKEN)
+# ==============================================================================
+class OAuthExchangeRequest(BaseModel):
+    code: str = Field(..., description="Mã Authorization Code lấy từ Zalo OAuth Login")
+    code_verifier: Optional[str] = Field("", description="Mã PKCE code verifier nếu có")
+
+
+@app.post("/oauth/exchange-code")
+def exchange_oauth_code(req: OAuthExchangeRequest):
+    """Đổi mã Authorization Code (lần đầu cấp quyền) lấy Access Token và Refresh Token"""
+    ok, msg = oauth_manager.exchange_authorization_code(req.code, req.code_verifier)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {
+        "status": "success",
+        "message": msg,
+        "token_valid": oauth_manager.is_token_valid(),
+        "expires_at": oauth_manager._tokens.get("updated_at"),
+    }
+
+
+@app.post("/oauth/refresh-token")
+def trigger_token_refresh():
+    """Chủ động kích hoạt làm mới Access Token bằng Refresh Token hiện có"""
+    ok, token_or_err = oauth_manager.refresh_access_token()
+    if not ok:
+        raise HTTPException(status_code=400, detail=token_or_err)
+    return {
+        "status": "success",
+        "message": "Đã làm mới Zalo Access Token thành công!",
+        "token_preview": f"{token_or_err[:12]}...{token_or_err[-6:]}",
+        "updated_at": oauth_manager._tokens.get("updated_at"),
+    }
+
+
+@app.get("/oauth/status")
+def get_oauth_status():
+    """Xem trạng thái và hạn sử dụng của Zalo OAuth Tokens"""
+    return {
+        "has_access_token": bool(oauth_manager._tokens.get("access_token")),
+        "has_refresh_token": bool(oauth_manager._tokens.get("refresh_token")),
+        "is_valid": oauth_manager.is_token_valid(),
+        "storage_file": oauth_manager.storage_file,
+        "last_updated": oauth_manager._tokens.get("updated_at", "Chưa xác định"),
+    }
+
 
 
 # ==============================================================================

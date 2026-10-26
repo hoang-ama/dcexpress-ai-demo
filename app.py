@@ -28,7 +28,7 @@ OLLAMA_API_URL = "http://localhost:11434/api/chat"
 OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 MODEL_NAME = "qwen2.5:7b"
 
-# System Prompt 1: Dùng cho hội thoại tư vấn rả rích từng bước (Progressive Slot-Filling "Luộc ếch")
+# System Prompt 1: Dùng cho hội thoại tư vấn rả rích từng bước (Progressive Slot-Filling)
 CHAT_SYSTEM_PROMPT = """Bạn là Trợ lý AI Chăm sóc Khách hàng của DC Express (Đi Chung Express).
 Phong cách của bạn: Thân thiện, lễ phép, nói năng tự nhiên như người thật, ngắn gọn và chu đáo.
 
@@ -38,7 +38,7 @@ QUY TẮC NGÔN NGỮ BẮT BUỘC:
 - Nếu cần hỏi hình ảnh, hãy nói: "Anh/chị có hình ảnh kiện hàng chụp gửi em xem với nhé ạ".
 
 NGUYÊN TẮC VÀNG VỀ TƯ VẤN:
-"Rả rích từng tí một - Không làm khách ngợp khi nhìn form":
+"Rả rích từng bước một - Không làm khách ngợp khi nhìn form":
 Tuyệt đối KHÔNG gửi cả danh sách dài nhiều yêu cầu một lúc. Hãy tương tác từng nhóm thông tin theo đúng 5 giai đoạn:
 
 ══════════════════════════════════════════════════════════════
@@ -576,7 +576,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("🚀 Demo Nhanh 1-Click")
-    st.caption("Mô phỏng kịch bản hội thoại tự nhiên rả rích 5 giai đoạn (Kiểu 'Luộc ếch')")
+    st.caption("Mô phỏng kịch bản hội thoại tự nhiên rả rích 5 giai đoạn")
 
     if st.button("📥 Nạp kịch bản mẫu 5 Giai đoạn (HN ➔ Quảng Ninh)", type="secondary", use_container_width=True):
         st.session_state.messages = [

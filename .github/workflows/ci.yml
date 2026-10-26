@@ -26,7 +26,7 @@ jobs:
 
     - name: Check Python Syntax
       run: |
-        python -m py_compile app.py pricing_engine.py zalo_middleware.py
+        python -m py_compile app.py pricing_engine.py zalo_middleware.py zalo_oauth_manager.py chatwoot_service.py
 
     - name: Test Pricing Engine Calculations
       run: |
@@ -39,17 +39,31 @@ jobs:
         print('✅ Pricing Engine test passed successfully!')
         "
 
-    - name: Test Zalo Middleware Endpoints (FastAPI)
+    - name: Test Zalo Middleware Endpoints (FastAPI) & OAuth / Chatwoot
       run: |
         python -c "
         from fastapi.testclient import TestClient
         from zalo_middleware import app
         client = TestClient(app)
+        
+        # 1. Health check
         res_h = client.get('/health')
         assert res_h.status_code == 200
         assert res_h.json()['status'] == 'healthy'
+        
+        # 2. Webhook verification
         res_w = client.get('/webhook')
         assert res_w.status_code == 200
-        print('✅ Zalo Middleware FastAPI health and webhook tests passed successfully!')
+        
+        # 3. OAuth status
+        res_o = client.get('/oauth/status')
+        assert res_o.status_code == 200
+        
+        # 4. Chatwoot webhook
+        res_cw = client.post('/chatwoot/webhook', json={'event': 'message_created', 'message_type': 'incoming'})
+        assert res_cw.status_code == 200
+        
+        print('✅ All Zalo Middleware FastAPI, OAuth & Chatwoot tests passed successfully!')
         "
+
 
