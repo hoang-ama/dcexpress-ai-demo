@@ -28,6 +28,12 @@ Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn the
 
 ---
 
+## 🗺️ Lộ Trình & Tiến Độ Dự Án (Project Roadmap)
+Toàn bộ kế hoạch chiến lược, tiến độ các pha từ PoC đến Go-Live sản xuất và ma trận phân công được cập nhật chi tiết tại:
+👉 **[ROADMAP.md](file:///Users/minhhh/Downloads/Code/dcexpress-ai-demo/ROADMAP.md)**
+
+---
+
 ## 🚀 Khởi Chạy Local (MacOS / Linux / Windows)
 
 ```bash
