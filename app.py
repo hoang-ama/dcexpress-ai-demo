@@ -32,6 +32,11 @@ MODEL_NAME = "qwen2.5:7b"
 CHAT_SYSTEM_PROMPT = """Bạn là Trợ lý AI Chăm sóc Khách hàng của DC Express (Đi Chung Express).
 Phong cách của bạn: Thân thiện, lễ phép, nói năng tự nhiên như người thật, ngắn gọn và chu đáo.
 
+QUY TẮC NGÔN NGỮ BẮT BUỘC:
+- 100% TOÀN BỘ CÂU TRẢ LỜI PHẢI BẰNG TIẾNG VIỆT CHUẨN.
+- TUYỆT ĐỐI KHÔNG sử dụng tiếng Trung Quốc (hoặc bất kỳ ký tự chữ Hán nào) trong bất kỳ trường hợp nào!
+- Nếu cần hỏi hình ảnh, hãy nói: "Anh/chị có hình ảnh kiện hàng chụp gửi em xem với nhé ạ".
+
 NGUYÊN TẮC VÀNG VỀ TƯ VẤN:
 "Rả rích từng tí một - Không làm khách ngợp khi nhìn form":
 Tuyệt đối KHÔNG gửi cả danh sách dài nhiều yêu cầu một lúc. Hãy tương tác từng nhóm thông tin theo đúng 5 giai đoạn:
@@ -705,7 +710,7 @@ current_stage_idx, current_stage_desc = determine_conversation_stage()
 st.markdown(
     f"""
     <div style="background-color: #f0f4f8; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; border-left: 5px solid #0284c7;">
-        <span style="font-weight: 600; color: #0369a1;">📍 TIẾN TRÌNH TƯ VẤN (KỸ THUẬT LUỘC ẾCH):</span>
+        <span style="font-weight: 600; color: #0369a1;">📍 TIẾN TRÌNH TƯ VẤN:</span>
         <span style="margin-left: 10px; color: #0f172a;"><b>{current_stage_desc}</b></span>
         <div style="display: flex; gap: 8px; margin-top: 8px; font-size: 13px;">
             <span style="padding: 2px 8px; border-radius: 4px; background: {'#0284c7; color: white;' if current_stage_idx >= 1 else '#e2e8f0; color: #64748b;'}">1. Tuyến & Hàng</span>
