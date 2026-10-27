@@ -2,7 +2,7 @@
 Module: zalo_middleware.py
 Mục đích: FastAPI Webhook Middleware kết nối Zalo Official Account (OA),
 AI Consultation Engine (Kỹ thuật Rả rích 5 giai đoạn), DC Express Pricing Engine
-và DCHub Portal API.
+và DC Hub Portal API.
 
 Các tính năng chính:
 1. Tiếp nhận Webhook Zalo OA (user_send_text, user_send_image...) và phản hồi HTTP 200 ngay lập tức (< 2s).
@@ -10,7 +10,7 @@ Các tính năng chính:
 3. Quản lý Session đa người dùng theo Zalo User ID (zalo_user_id).
 4. Tự động tính cước (+30% Margin) qua pricing_engine.py khi đủ 3 thông tin critical.
 5. Cơ chế Handover sang Chatwoot cho người thật khi gặp ca khiếu nại hoặc khách yêu cầu.
-6. Tự động bóc tách JSON và đẩy Lead lên DCHub Portal API khi đạt Order Confirmation.
+6. Tự động bóc tách JSON và đẩy Lead lên DC Hub Portal API khi đạt Order Confirmation.
 7. Endpoint /simulate/message cho phép kiểm thử nhanh toàn bộ luồng hội thoại không cần Zalo thật.
 """
 
@@ -42,7 +42,7 @@ logger = logging.getLogger("zalo_middleware")
 # Khởi tạo FastAPI App
 app = FastAPI(
     title="DC Express - Zalo OA Webhook Middleware",
-    description="Hệ thống Middleware kết nối Zalo OA, AI CSKH 5 giai đoạn, RAG Pricing và DCHub Portal",
+    description="Hệ thống Middleware kết nối Zalo OA, AI CSKH 5 giai đoạn, RAG Pricing và DC Hub Portal",
     version="1.0.0",
 )
 
@@ -312,10 +312,10 @@ def call_ai_engine(messages: List[Dict[str, str]]) -> str:
 
 
 # ==============================================================================
-# HÀM BÓC TÁCH JSON & KẾT NỐI API DCHUB PORTAL (PHASE 3)
+# HÀM BÓC TÁCH JSON & KẾT NỐI API DC HUB PORTAL (PHASE 3)
 # ==============================================================================
 def parse_conversation_entities(all_text: str) -> Dict[str, Any]:
-    """Trích xuất thực thể từ nội dung chat để tạo payload DCHub Portal chuẩn xác"""
+    """Trích xuất thực thể từ nội dung chat để tạo payload DC Hub Portal chuẩn xác"""
     # Trích xuất SĐT
     phones = re.findall(r"(?:0|\+84)[3|5|7|8|9][0-9]{8}", all_text)
     sender_phone = phones[0] if len(phones) > 0 else "0399092104"
@@ -353,7 +353,7 @@ def parse_conversation_entities(all_text: str) -> Dict[str, Any]:
 
 
 def check_and_create_lead(session: UserSession) -> Optional[Dict[str, Any]]:
-    """Khi cuộc trò chuyện có đủ thông tin địa chỉ & hàng hóa (Giai đoạn 2-3), tự động tạo Lead DCHub Portal"""
+    """Khi cuộc trò chuyện có đủ thông tin địa chỉ & hàng hóa (Giai đoạn 2-3), tự động tạo Lead DC Hub Portal"""
     if session.lead_code:
         return None  # Đã có Lead trên Portal
 
@@ -369,13 +369,13 @@ def check_and_create_lead(session: UserSession) -> Optional[Dict[str, Any]]:
         )
         if lead_res.get("success"):
             session.lead_code = lead_res.get("code")
-            logger.info(f"✨ [DCHUB PORTAL] Đã tạo Lead '{session.lead_code}' (express_lead - Có nhu cầu) cho User {session.user_id}")
+            logger.info(f"✨ [DC HUB PORTAL] Đã tạo Lead '{session.lead_code}' (express_lead - Có nhu cầu) cho User {session.user_id}")
             return lead_res
     return None
 
 
 def extract_and_push_lead(session: UserSession) -> Optional[Dict[str, Any]]:
-    """Khi cuộc trò chuyện đạt Order Confirmation, tạo Đơn hàng chính thức (Khách chốt) trên DCHub Portal"""
+    """Khi cuộc trò chuyện đạt Order Confirmation, tạo Đơn hàng chính thức (Khách chốt) trên DC Hub Portal"""
     all_text = "\n".join([m["content"] for m in session.messages])
     entities = parse_conversation_entities(all_text)
 
@@ -387,7 +387,7 @@ def extract_and_push_lead(session: UserSession) -> Optional[Dict[str, Any]]:
         cargo_description=entities["cargo"]["description"],
     )
 
-    # Gọi DCHub Portal Service tạo Đơn hàng chính thức
+    # Gọi DC Hub Portal Service tạo Đơn hàng chính thức
     order_res = dchub_service.create_order(
         sender=entities["sender"],
         receiver=entities["receiver"],
@@ -425,7 +425,7 @@ def extract_and_push_lead(session: UserSession) -> Optional[Dict[str, Any]]:
         "server_source": order_res.get("source"),
     }
 
-    logger.info(f"🚀 [DCHUB PORTAL] Đã tạo Đơn hàng '{session.order_code}' (Khách chốt) trên portal.dichung.vn/booking~express")
+    logger.info(f"🚀 [DC HUB PORTAL] Đã tạo Đơn hàng '{session.order_code}' (Khách chốt) trên portal.dichung.vn/booking~express")
     return session.extracted_order
 
 
@@ -517,7 +517,7 @@ def process_zalo_conversation_task(user_id: str, user_text: str):
     # 3. Gửi câu trả lời về cho Zalo User
     send_zalo_message(user_id, ai_reply)
 
-    # 4. Tự động tạo Lead (Có nhu cầu) hoặc tạo Đơn hàng (Khách chốt) trên DCHub Portal
+    # 4. Tự động tạo Lead (Có nhu cầu) hoặc tạo Đơn hàng (Khách chốt) trên DC Hub Portal
     check_and_create_lead(session)
     if any(kw in ai_reply for kw in ["ORDER CONFIRMATION", "PHIẾU XÁC NHẬN ĐƠN HÀNG"]):
         extract_and_push_lead(session)

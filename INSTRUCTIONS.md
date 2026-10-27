@@ -8,7 +8,7 @@
 
 - **Tên dự án**: DC Express AI CSKH & Order Automation Agent.
 - **Doanh nghiệp**: Công ty Cổ phần Vận tải Hàng hóa Đi Chung (DC Express / Dichung.vn).
-- **Mục tiêu**: Tự động hóa luồng tiếp nhận nhu cầu, thu thập thông tin đơn hàng, tính giá cước, chốt đơn và bắn Lead lên hệ thống **DCHub Portal** (`portal.dichung.vn`) cũng như tương tác qua **Zalo OA** và **Hotline VoIP (19006022 / Asterisk)**.
+- **Mục tiêu**: Tự động hóa luồng tiếp nhận nhu cầu, thu thập thông tin đơn hàng, tính giá cước, chốt đơn và bắn Lead lên hệ thống **DC Hub Portal** (`portal.dichung.vn`) cũng như tương tác qua **Zalo OA** và **Hotline VoIP (19006022 / Asterisk)**.
 - **Chiến lược hạ tầng**:
   - **70% tác vụ (Đặt đơn / Điền Form)**: Chạy hoàn toàn offline bằng LLM mã nguồn mở (**Qwen 2.5 7B / 1.5B**) trên server/VPS nội bộ qua **Ollama / Dify** để tối ưu chi phí (0 VNĐ Token).
   - **30% tác vụ (Hoàn, hủy, khiếu nại, tư vấn RAG)**: Chuyển tiếp sang Cloud AI (**Gemini 1.5 Flash**) có khống chế Token Quota & Context Caching.
@@ -113,7 +113,7 @@ Nhằm giúp khách hàng không bị ngợp hay nản lòng khi thấy một fo
 
 ---
 
-### C. Cấu trúc JSON sạch mục tiêu (DCHub Portal API Payload):
+### C. Cấu trúc JSON sạch mục tiêu (DC Hub Portal API Payload):
 ```json
 {
   "order_code": "DC-HNQN-20261025-01",
@@ -181,12 +181,12 @@ Nhằm giúp khách hàng không bị ngợp hay nản lòng khi thấy một fo
 
 Ứng dụng `app.py` chia làm 2 cột chính (`st.columns([3, 2])`):
 1. **Cột Chatbot UI**: Tương tác với người dùng theo cơ chế Stream từ Ollama `qwen2.5:7b`.
-2. **Cột DCHub Portal API & Pricing Node**:
+2. **Cột DC Hub Portal API & Pricing Node**:
    - Sử dụng Regex bắt từ khóa `"Thông tin sau khi khách hàng cung cấp đủ"`.
    - Kích hoạt **Node JSON Extractor** (gửi prompt riêng cho Ollama để bóc tách văn bản thô ra JSON sạch).
    - **Tích hợp Module 1 (`pricing_engine.py`)**: Tự động nhận diện tuyến, quy đổi thể tích (/6000 & /5000), áp dụng biên lợi nhuận +30% và điền `pricing_estimate` vào JSON.
    - Giao diện trực quan cho phép so sánh cước phí (Đường bộ tiết kiệm vs Đường bay hỏa tốc) và chọn gói dịch vụ.
-   - Mô phỏng Nút bấm Bắn API POST request tạo Lead trên DCHub Portal với kết quả HTTP 200 OK giả lập (kèm thông tin báo giá).
+   - Mô phỏng Nút bấm Bắn API POST request tạo Lead trên DC Hub Portal với kết quả HTTP 200 OK giả lập (kèm thông tin báo giá).
 
 ---
 
@@ -234,4 +234,4 @@ streamlit run app.py
 ```
 
 ---
-*Ghi chú dành cho Antigravity IDE*: Hãy giữ nguyên các System Prompt và Định dạng JSON mẫu trong file này để đảm bảo dữ liệu đôn hàng đồng bộ tuyệt đối với hệ thống Backend DCHub Portal.
+*Ghi chú dành cho Antigravity IDE*: Hãy giữ nguyên các System Prompt và Định dạng JSON mẫu trong file này để đảm bảo dữ liệu đôn hàng đồng bộ tuyệt đối với hệ thống Backend DC Hub Portal.

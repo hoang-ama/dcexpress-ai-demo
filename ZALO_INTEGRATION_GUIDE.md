@@ -1,6 +1,6 @@
-# ZALO OA WEBHOOK AND DCHUB PORTAL INTEGRATION GUIDE
+# ZALO OA WEBHOOK AND DC HUB PORTAL INTEGRATION GUIDE
 
-Tài liệu này hướng dẫn chi tiết cách cấu hình Webhook Middleware kết nối giữa Zalo Official Account, AI Agent Engine và DCHub Portal Backend API.
+Tài liệu này hướng dẫn chi tiết cách cấu hình Webhook Middleware kết nối giữa Zalo Official Account, AI Agent Engine và DC Hub Portal Backend API.
 
 ---
 
@@ -13,7 +13,7 @@ Tài liệu này hướng dẫn chi tiết cách cấu hình Webhook Middleware 
    - Đẩy tác vụ xử lý AI sang Background Worker.
    - Gửi query sang Dify / Ollama API (`http://localhost:80/v1/chat-messages`).
    - Nhận câu trả lời từ AI Agent -> Gửi phản hồi tin nhắn văn bản lại cho Zalo User.
-   - Khi đơn hàng hoàn tất, trích xuất JSON và gửi POST Request sang DCHub Portal API để tự động tạo Lead.
+   - Khi đơn hàng hoàn tất, trích xuất JSON và gửi POST Request sang DC Hub Portal API để tự động tạo Lead.
 
 ---
 

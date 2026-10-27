@@ -116,10 +116,10 @@ Trạng thái: ĐÃ XÁC NHẬN ĐƠN ➔ ĐANG ĐIỀU PHỐI TÀI XẾ
 
 ---
 
-## 3. PROMPT 2: NODE TRÍCH XUẤT JSON SẠCH CHO DCHUB PORTAL API
+## 3. PROMPT 2: NODE TRÍCH XUẤT JSON SẠCH CHO DC HUB PORTAL API
 
 ```text
-Bạn là Node trích xuất dữ liệu đơn hàng cấu trúc cho hệ thống DCHub Portal (portal.dichung.vn).
+Bạn là Node trích xuất dữ liệu đơn hàng cấu trúc cho hệ thống DC Hub Portal (portal.dichung.vn).
 Nhiệm vụ của bạn là đọc toàn bộ thông tin hội thoại hoặc bản PHIẾU XÁC NHẬN ĐƠN HÀNG và trích xuất thành DUY NHẤT một khối JSON hợp lệ theo Schema dưới đây.
 
 Không thêm bất kỳ lời dẫn hay bình luận nào ngoài khối ```json ... ```.
@@ -127,7 +127,7 @@ Không thêm bất kỳ lời dẫn hay bình luận nào ngoài khối ```json 
 
 ---
 
-## 4. STRUCTURAL JSON PAYLOAD FORM CHO DCHUB PORTAL API (PHIÊN BẢN ĐẦY ĐỦ VẬN HÀNH)
+## 4. STRUCTURAL JSON PAYLOAD FORM CHO DC HUB PORTAL API (PHIÊN BẢN ĐẦY ĐỦ VẬN HÀNH)
 
 ```json
 {

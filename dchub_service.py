@@ -1,8 +1,8 @@
 """
 ==============================================================================
-DC EXPRESS - DCHUB PORTAL API CLIENT & SERVICE (PHASE 3)
+DC EXPRESS - DC HUB PORTAL API CLIENT & SERVICE (PHASE 3)
 ==============================================================================
-Module kết nối trực tiếp với API của Đi Chung Portal (DCHub):
+Module kết nối trực tiếp với API của Đi Chung Portal (DC Hub):
 - Base URL: https://portal.dichung.vn (hoặc https://staging.portal.dichung.vn)
 - Quản lý đơn hàng: https://portal.dichung.vn/booking~express
 - Client key xác thực test: kqab0nar_dltg04o7z5b
@@ -14,7 +14,7 @@ Chức năng:
 2. create_order(): Tạo Đơn hàng chính thức (trạng thái "Khách chốt", sinh mã DC...)
    khi khách đồng ý báo giá và chốt đơn.
 3. get_booking(): Lấy chi tiết đơn hàng theo mã code và SĐT.
-4. list_bookings(): Lấy danh sách đơn hàng thực tế từ DCHub Portal Agent.
+4. list_bookings(): Lấy danh sách đơn hàng thực tế từ DC Hub Portal Agent.
 5. format_order_clipboard(): Xuất định dạng "Sao chép thông tin đơn hàng"
    chuẩn 100% khớp với modal popup trên portal.dichung.vn/booking~express.
 ==============================================================================
@@ -32,12 +32,12 @@ logger = logging.getLogger("dchub_service")
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Cấu hình môi trường DCHub Portal
+# Cấu hình môi trường DC Hub Portal
 DCHUB_BASE_URL = os.environ.get("DCHUB_BASE_URL", "https://staging.portal.dichung.vn").rstrip("/")
 DCHUB_CLIENT_KEY = os.environ.get("DCHUB_CLIENT_KEY", "kqab0nar_dltg04o7z5b")
 DCHUB_TIMEOUT = int(os.environ.get("DCHUB_TIMEOUT", "10"))
 
-# Toạ độ ước lượng các tỉnh/thành phố để phục vụ DCHub Routing Engine
+# Toạ độ ước lượng các tỉnh/thành phố để phục vụ DC Hub Routing Engine
 COORDINATE_MAP = {
     "hà nội": {"lat": 21.028511, "lng": 105.854167},
     "quảng ninh": {"lat": 20.950454, "lng": 107.073357},
@@ -50,7 +50,7 @@ COORDINATE_MAP = {
 
 
 def _get_geo_location(address: str, default_lat: float = 21.0285, default_lng: float = 105.8542) -> Dict[str, float]:
-    """Tìm toạ độ xấp xỉ từ tên địa chỉ để DCHub API nhận diện hợp lệ"""
+    """Tìm toạ độ xấp xỉ từ tên địa chỉ để DC Hub API nhận diện hợp lệ"""
     addr_lower = (address or "").lower()
     for city, coords in COORDINATE_MAP.items():
         if city in addr_lower:
@@ -59,7 +59,7 @@ def _get_geo_location(address: str, default_lat: float = 21.0285, default_lng: f
 
 
 class DCHubPortalService:
-    """Service tích hợp DCHub Portal API của Đi Chung"""
+    """Service tích hợp DC Hub Portal API của Đi Chung"""
 
     def __init__(self, base_url: str = DCHUB_BASE_URL, client_key: str = DCHUB_CLIENT_KEY):
         self.base_url = base_url.rstrip("/")
@@ -86,7 +86,7 @@ class DCHubPortalService:
         notes: str = "--",
     ) -> Dict[str, Any]:
         """
-        Tạo Lead trên DCHub Portal khi bước đầu có đủ:
+        Tạo Lead trên DC Hub Portal khi bước đầu có đủ:
         - Địa chỉ giao/nhận
         - Loại hàng & mô tả hàng
         - Tên & SĐT người gửi/nhận
@@ -148,10 +148,10 @@ class DCHubPortalService:
             },
         }
 
-        # Gọi API DCHub Portal
+        # Gọi API DC Hub Portal
         url = f"{self.base_url}/api/booking/v1/bookings"
         try:
-            logger.info(f"Đang tạo Lead trên DCHub Portal: {url} | Client: {self.client_key}")
+            logger.info(f"Đang tạo Lead trên DC Hub Portal: {url} | Client: {self.client_key}")
             response = requests.post(url, headers=self._get_headers(), json=payload, timeout=DCHUB_TIMEOUT)
             if response.status_code in [200, 201]:
                 res_data = response.json().get("data", {})
@@ -168,11 +168,11 @@ class DCHubPortalService:
                     "source": "dchub_api_live",
                 }
             else:
-                logger.warning(f"DCHub Lead API HTTP {response.status_code}: {response.text[:200]}")
+                logger.warning(f"DC Hub Lead API HTTP {response.status_code}: {response.text[:200]}")
         except Exception as e:
-            logger.warning(f"Lỗi kết nối DCHub Lead API: {e}")
+            logger.warning(f"Lỗi kết nối DC Hub Lead API: {e}")
 
-        # Fallback lưu Lead chuẩn format DCHub Portal
+        # Fallback lưu Lead chuẩn format DC Hub Portal
         return {
             "success": True,
             "code": lead_code,
@@ -196,7 +196,7 @@ class DCHubPortalService:
         notes: str = "--",
     ) -> Dict[str, Any]:
         """
-        Tạo Đơn hàng chính thức trên DCHub Portal khi khách đã chốt giá:
+        Tạo Đơn hàng chính thức trên DC Hub Portal khi khách đã chốt giá:
         - Bắn sang POST /api/booking/v1/bookings
         - Sinh mã đơn hàng dạng DC181611 (hoặc DC...)
         - Trạng thái: "Khách chốt", Tình trạng điều xe: "Chưa điều"
@@ -266,10 +266,10 @@ class DCHubPortalService:
             },
         }
 
-        # Gửi request sang API DCHub Portal
+        # Gửi request sang API DC Hub Portal
         url = f"{self.base_url}/api/booking/v1/bookings"
         try:
-            logger.info(f"Đang gửi Đơn hàng lên DCHub Portal: {url} | Client: {self.client_key}")
+            logger.info(f"Đang gửi Đơn hàng lên DC Hub Portal: {url} | Client: {self.client_key}")
             response = requests.post(url, headers=self._get_headers(), json=payload, timeout=DCHUB_TIMEOUT)
             if response.status_code in [200, 201]:
                 res_data = response.json().get("data", {})
@@ -294,11 +294,11 @@ class DCHubPortalService:
                     ),
                 }
             else:
-                logger.warning(f"DCHub Portal Order API HTTP {response.status_code}: {response.text[:200]}")
+                logger.warning(f"DC Hub Portal Order API HTTP {response.status_code}: {response.text[:200]}")
         except Exception as e:
-            logger.warning(f"Lỗi kết nối DCHub Portal Order API: {e}")
+            logger.warning(f"Lỗi kết nối DC Hub Portal Order API: {e}")
 
-        # Fallback lưu Đơn hàng chuẩn DCHub Portal
+        # Fallback lưu Đơn hàng chuẩn DC Hub Portal
         return {
             "success": True,
             "code": order_code,
@@ -318,10 +318,10 @@ class DCHubPortalService:
         }
 
     # ==========================================================================
-    # 3. LẤY CHI TIẾT & DANH SÁCH ĐƠN HÀNG TỪ DCHUB PORTAL
+    # 3. LẤY CHI TIẾT & DANH SÁCH ĐƠN HÀNG TỪ DC HUB PORTAL
     # ==========================================================================
     def get_booking(self, code: str, phone: str = "") -> Optional[Dict[str, Any]]:
-        """Lấy thông tin chi tiết đơn hàng từ DCHub Portal"""
+        """Lấy thông tin chi tiết đơn hàng từ DC Hub Portal"""
         url = f"{self.base_url}/api/booking/v1/bookings/code?code={code}&phone={phone}"
         try:
             r = requests.get(url, headers=self._get_headers(), timeout=DCHUB_TIMEOUT)
@@ -332,7 +332,7 @@ class DCHubPortalService:
         return None
 
     def list_bookings(self, limit: int = 10, offset: int = 0) -> List[Dict[str, Any]]:
-        """Lấy danh sách đơn hàng thực tế của Agent từ DCHub Portal"""
+        """Lấy danh sách đơn hàng thực tế của Agent từ DC Hub Portal"""
         url = f"{self.base_url}/api/booking/v1/agent/bookings?limit={limit}&offset={offset}"
         try:
             r = requests.get(url, headers=self._get_headers(), timeout=DCHUB_TIMEOUT)

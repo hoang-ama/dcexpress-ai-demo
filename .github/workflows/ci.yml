@@ -39,7 +39,7 @@ jobs:
         print('✅ Pricing Engine test passed successfully!')
         "
 
-    - name: Test DCHub Portal API Service (Phase 3)
+    - name: Test DC Hub Portal API Service (Phase 3)
       run: |
         python -c "
         from dchub_service import dchub_service
@@ -68,7 +68,7 @@ jobs:
         assert order['status'] == 'Khách chốt'
         assert 'code' in order and order['code'].startswith('DC')
         
-        # Test 3: Format Modal Clipboard chuẩn theo DCHub Portal
+        # Test 3: Format Modal Clipboard chuẩn theo DC Hub Portal
         cb = order['clipboard_text']
         assert 'Mã đơn:' in cb
         assert 'Người gửi: Long' in cb
@@ -82,10 +82,10 @@ jobs:
         assert 'NET: 390,000 đ' in cb
         assert 'Thu hộ: 350,000 đ' in cb
         
-        print('✅ DCHub Portal API Service unit tests passed successfully!')
+        print('✅ DC Hub Portal API Service unit tests passed successfully!')
         "
 
-    - name: Test Zalo Middleware Endpoints (FastAPI) & OAuth / Chatwoot / DCHub
+    - name: Test Zalo Middleware Endpoints (FastAPI) & OAuth / Chatwoot / DC Hub
       run: |
         python -c "
         from fastapi.testclient import TestClient
@@ -109,7 +109,7 @@ jobs:
         res_cw = client.post('/chatwoot/webhook', json={'event': 'message_created', 'message_type': 'incoming'})
         assert res_cw.status_code == 200
         
-        # 5. Simulate Zalo Message flow & DCHub Lead generation
+        # 5. Simulate Zalo Message flow & DC Hub Lead generation
         res_sim = client.post('/simulate/message', json={
             'user_id': 'test_zalo_user_phase3',
             'message': 'Tôi muốn gửi 1 tập tài liệu từ Times City Hà Nội đi Ninh Bình'
@@ -119,7 +119,7 @@ jobs:
         assert data_sim['lead_code'] is not None
         assert data_sim['lead_code'].startswith('DC')
         
-        print('✅ All Zalo Middleware, OAuth, Chatwoot & DCHub tests passed successfully!')
+        print('✅ All Zalo Middleware, OAuth, Chatwoot & DC Hub tests passed successfully!')
         "
 
 

@@ -2,7 +2,7 @@
 
 ## 1. TỔNG QUAN DỰ ÁN & BỐI CẢNH NGHIỆP VỤ
 - **Doanh nghiệp**: DC Express (Đi Chung Express - `dichung.vn` / `dichungexpress.com`).
-- **Mục tiêu**: Tự động hóa luồng CSKH, tiếp nhận thông tin, tính cước RAG, chốt đơn và đẩy Lead tự động vào hệ thống **DCHub Portal** (`portal.dichung.vn`).
+- **Mục tiêu**: Tự động hóa luồng CSKH, tiếp nhận thông tin, tính cước RAG, chốt đơn và đẩy Lead tự động vào hệ thống **DC Hub Portal** (`portal.dichung.vn`).
 - **Kênh tiếp nhận chính**: 
   * Hotline VoIP: `19006022` / `0901778008` (Quản lý qua Asterisk / Caresoft).
   * Zalo OA: Official Account của DC Express.
@@ -60,7 +60,7 @@ Thay vì yêu cầu khách hàng điền một danh sách dài các trường th
 ┌──────────────────────────────┐  ┌──────────────────────────────┐
 │ LỚP 2: MIDDLEWARE API        │  │ LỚP 3: CLOUD AI PLATFORMS    │
 │ • Zalo OA Webhook (FastAPI)  │  │ • Gemini Flash / Claude /    │
-│ • API DCHub Portal (Tạo lead)│  │   OpenAI / Grok qua API Key  │
+│ • API DC Hub Portal (Tạo lead)│  │   OpenAI / Grok qua API Key  │
 │ • Asterisk PJSIP (Callbot)   │  │ • Bật Context Caching & Quota│
 └──────────────┬───────────────┘  └──────────────┬───────────────┘
                │                                 │
@@ -85,9 +85,9 @@ Thay vì yêu cầu khách hàng điền một danh sách dài các trường th
 ---
 
 ## 4. CẤU TRÚC MÃ NGUỒN CỦA DỰ ÁN (`dcexpress-ai-demo`)
-- `app.py`: Streamlit App demo giao diện Chat & RAG Pricing & DCHub API Node.
+- `app.py`: Streamlit App demo giao diện Chat & RAG Pricing & DC Hub API Node.
 - `zalo_middleware.py`: FastAPI Webhook Middleware kết nối Zalo OA & Dify/Ollama.
 - `PROJECT_OVERVIEW.md`: Tài liệu tổng quan kiến trúc & quy trình nghiệp vụ.
 - `SYSTEM_PROMPTS.md`: Bộ System Prompts chuẩn hóa (Chat, RAG, JSON Extractor).
 - `RAG_PRICING_ENGINE.md`: Tài liệu quy tắc tính cước, quy đổi khối lượng & Bảng giá chuẩn.
-- `ZALO_WEBHOOK_INTEGRATION.md`: Hướng dẫn cấu hình Nginx, SSL, Webhook Zalo OA & DCHub Portal API.
+- `ZALO_WEBHOOK_INTEGRATION.md`: Hướng dẫn cấu hình Nginx, SSL, Webhook Zalo OA & DC Hub Portal API.

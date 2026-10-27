@@ -15,7 +15,7 @@ Tài liệu này hướng dẫn chi tiết dành cho Đội ngũ Kỹ thuật & 
        ▼
 [DC Express Zalo Middleware (FastAPI)] ◄──► [Local Ollama / Gemini 3.8 Flash]
        │                                ◄──► [Pricing Engine (+30% Margin)]
-       ├─────────────────────────────────► (Khi chốt đơn) [DCHub Portal API]
+       ├─────────────────────────────────► (Khi chốt đơn) [DC Hub Portal API]
        ▼ (Khi khách yêu cầu gặp người / Khiếu nại)
 [Chatwoot Live Agent Dashboard] ──(Tư vấn viên trả lời)──► [Gửi ngược về Zalo Khách]
 ```

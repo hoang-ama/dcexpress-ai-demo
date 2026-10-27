@@ -2,7 +2,7 @@
 
 [![DC Express AI Agent CI](https://github.com/hoang-ama/dcexpress-ai-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/hoang-ama/dcexpress-ai-demo/actions/workflows/ci.yml)
 
-Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn theo **Kịch bản tư vấn tự nhiên 5 giai đoạn (Progressive Disclosure)** giúp khách không bị ngợp form, tích hợp RAG Pricing Engine (+30% Margin), Order Confirmation và trích xuất JSON sạch chuẩn API DCHub Portal (`portal.dichung.vn`).
+Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn theo **Kịch bản tư vấn tự nhiên 5 giai đoạn (Progressive Disclosure)** giúp khách không bị ngợp form, tích hợp RAG Pricing Engine (+30% Margin), Order Confirmation và trích xuất JSON sạch chuẩn API DC Hub Portal (`portal.dichung.vn`).
 
 ---
 
@@ -22,7 +22,7 @@ Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn the
 3. **Dual Engine Kiến Trúc Hybrid**:
    - **Local Mode (0đ Token)**: Chạy qua Ollama `qwen2.5:7b` On-premise.
    - **Cloud Mode**: Tự động Fallback sang Google Gemini khi triển khai Online trên Server/Cloud.
-4. **DCHub Portal Integration & Driver Dispatch**:
+4. **DC Hub Portal Integration & Driver Dispatch**:
    - Tự động bóc tách JSON Payload chuẩn hóa theo schema đơn hàng hoàn chỉnh.
    - Mô phỏng quy trình tạo Lead và Điều phối tài xế (Bắn SMS/Zalo thông tin tài xế cho khách).
 

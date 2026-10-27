@@ -16,12 +16,12 @@ except ImportError:
 
 # Cấu hình giao diện Streamlit
 st.set_page_config(
-    page_title="DC Express AI Agent & DCHub API Demo", page_icon="📦", layout="wide"
+    page_title="DC Express AI Agent & DC Hub API Demo", page_icon="📦", layout="wide"
 )
 
-st.title("📦 DC Express - AI Assistant & DCHub Portal Integration")
+st.title("📦 DC Express - AI Assistant & DC Hub Portal Integration")
 st.caption(
-    "Hệ thống tự động thu thập thông tin đơn hàng, RAG Pricing Engine & Trích xuất JSON API DCHub Portal"
+    "Hệ thống tự động thu thập thông tin đơn hàng, RAG Pricing Engine & Trích xuất JSON API DC Hub Portal"
 )
 
 # Địa chỉ Ollama API Local
@@ -109,8 +109,8 @@ Trạng thái: ĐÃ XÁC NHẬN ĐƠN ➔ ĐANG ĐIỀU PHỐI TÀI XẾ
 (Thông tin tài xế sẽ được tự động gửi qua tin nhắn cho quý khách ngay khi nhà xe xếp chuyến!)
 """
 
-# System Prompt 2: Node chuyên trích xuất JSON sạch cho API DCHub Portal
-EXTRACTION_SYSTEM_PROMPT = """Bạn là Node trích xuất dữ liệu cấu trúc cho hệ thống DCHub Portal của DC Express.
+# System Prompt 2: Node chuyên trích xuất JSON sạch cho API DC Hub Portal
+EXTRACTION_SYSTEM_PROMPT = """Bạn là Node trích xuất dữ liệu cấu trúc cho hệ thống DC Hub Portal của DC Express.
 Nhiệm vụ của bạn là đọc toàn bộ nội dung hội thoại hoặc PHIẾU XÁC NHẬN ĐƠN HÀNG và chuyển đổi 100% thành định dạng JSON SẠCH.
 
 YÊU CẦU ĐẦU RA JSON:
@@ -1009,24 +1009,24 @@ with col_chat:
                     st.rerun()
 
 with col_json:
-    st.subheader("⚡ DCHub Portal Express & Driver Dispatch")
+    st.subheader("⚡ DC Hub Portal Express & Driver Dispatch")
     st.markdown(
-        "[🔗 Mở DCHub Portal Express](https://portal.dichung.vn/booking~express) &nbsp;|&nbsp; "
+        "[🔗 Mở DC Hub Portal Express](https://portal.dichung.vn/booking~express) &nbsp;|&nbsp; "
         "🟢 **Staging API Live** (`client: kqab...04o7z5b`)"
     )
 
-    # Nút đồng bộ nhanh đơn hàng thực tế từ Staging DCHub Portal
+    # Nút đồng bộ nhanh đơn hàng thực tế từ Staging DC Hub Portal
     col_sync1, col_sync2 = st.columns([2, 1])
     with col_sync2:
-        if st.button("🔄 Tải đơn từ DCHub", use_container_width=True, help="Lấy danh sách đơn hàng thực tế từ Đi Chung Staging"):
-            with st.spinner("Đang tải dữ liệu từ DCHub Portal API..."):
+        if st.button("🔄 Tải đơn từ DC Hub", use_container_width=True, help="Lấy danh sách đơn hàng thực tế từ Đi Chung Staging"):
+            with st.spinner("Đang tải dữ liệu từ DC Hub Portal API..."):
                 bookings = dchub_service.list_bookings(limit=5)
                 st.session_state.dchub_live_list = bookings
-                st.success(f"Đã tải {len(bookings)} đơn thực tế từ DCHub!")
+                st.success(f"Đã tải {len(bookings)} đơn thực tế từ DC Hub!")
 
     # 1. BẢNG HIỂN THỊ ĐƠN HÀNG THỰC TẾ NẾU VỪA TẢI VỀ
     if st.session_state.dchub_live_list:
-        with st.expander(f"📦 Danh sách {len(st.session_state.dchub_live_list)} đơn hàng thực tế từ DCHub Portal Staging", expanded=False):
+        with st.expander(f"📦 Danh sách {len(st.session_state.dchub_live_list)} đơn hàng thực tế từ DC Hub Portal Staging", expanded=False):
             for b in st.session_state.dchub_live_list:
                 st.markdown(
                     f"**Mã đơn:** `{b.get('code', 'N/A')}` | **ID:** `{b.get('_id')}` | **Trạng thái:** `{b.get('status')}`  \n"
@@ -1038,7 +1038,7 @@ with col_json:
                 st.divider()
 
     if st.session_state.extracted_json:
-        st.success("✅ Đơn hàng đã chốt qua 5 Giai đoạn & Sẵn sàng đồng bộ DCHub Portal!")
+        st.success("✅ Đơn hàng đã chốt qua 5 Giai đoạn & Sẵn sàng đồng bộ DC Hub Portal!")
 
         # 1. HIỂN THỊ MODULE PRICING ENGINE
         if st.session_state.pricing_details:
@@ -1108,13 +1108,13 @@ with col_json:
         cod_amount = ext.get("cargo", {}).get("cod_amount") or 350000
 
         with st.container(border=True):
-            st.markdown("### 🖥️ Màn hình DCHub Portal (`portal.dichung.vn/booking~express`)")
+            st.markdown("### 🖥️ Màn hình DC Hub Portal (`portal.dichung.vn/booking~express`)")
 
             # HÀNG ACTION: 2 NÚT CHÍNH (TẠO LEAD & TẠO ĐƠN HÀNG)
             act_col1, act_col2 = st.columns(2)
             with act_col1:
                 if st.button("📑 Tạo Lead (express_lead - 'Có nhu cầu')", use_container_width=True, type="secondary"):
-                    with st.spinner("Đang gửi Lead lên DCHub Portal..."):
+                    with st.spinner("Đang gửi Lead lên DC Hub Portal..."):
                         lead_res = dchub_service.create_lead(
                             sender={"name": sender_name, "phone": sender_phone, "address": sender_addr},
                             receiver={"name": receiver_name, "phone": receiver_phone, "address": receiver_addr},
@@ -1122,11 +1122,11 @@ with col_json:
                             service_type=ext.get("pricing", {}).get("service_type") or "Chuyển nhanh",
                         )
                         st.session_state.dchub_lead = lead_res
-                        st.toast(f"Đã tạo Lead {lead_res['code']} trên DCHub Portal!", icon="📑")
+                        st.toast(f"Đã tạo Lead {lead_res['code']} trên DC Hub Portal!", icon="📑")
 
             with act_col2:
                 if st.button("🚀 Tạo Đơn Hàng Chính Thức ('Khách chốt')", use_container_width=True, type="primary"):
-                    with st.spinner("Đang tạo đơn hàng và sinh mã DC trên DCHub Portal..."):
+                    with st.spinner("Đang tạo đơn hàng và sinh mã DC trên DC Hub Portal..."):
                         order_res = dchub_service.create_order(
                             sender={"name": sender_name, "phone": sender_phone, "address": sender_addr},
                             receiver={"name": receiver_name, "phone": receiver_phone, "address": receiver_addr},
@@ -1135,7 +1135,7 @@ with col_json:
                             payment_method="transfer | sender prepaid | company",
                         )
                         st.session_state.dchub_order = order_res
-                        st.toast(f"Đã tạo đơn {order_res['code']} thành công trên DCHub Portal!", icon="🎉")
+                        st.toast(f"Đã tạo đơn {order_res['code']} thành công trên DC Hub Portal!", icon="🎉")
 
             # HIỂN THỊ DÒNG ĐƠN HÀNG / LEAD CHUẨN THEO ẢNH
             current_code = (
@@ -1198,7 +1198,7 @@ with col_json:
                 notes="--",
             )
 
-            with st.expander("📋 Xem & Sao chép thông tin đơn hàng (Modal Popup chuẩn DCHub Portal)", expanded=True):
+            with st.expander("📋 Xem & Sao chép thông tin đơn hàng (Modal Popup chuẩn DC Hub Portal)", expanded=True):
                 st.caption("Khung định dạng chuẩn 100% khớp với popup 'Sao chép thông tin đơn hàng' trên portal.dichung.vn:")
                 st.text_area("Nội dung sao chép:", value=clipboard_text, height=220, disabled=True)
                 st.code(clipboard_text, language="yaml")
@@ -1220,7 +1220,7 @@ with col_json:
                         st.rerun()
 
         # 3. HIỂN THỊ CẤU TRÚC JSON SẠCH MỤC TIÊU DCHUB PORTAL
-        with st.expander("📄 DCHub Portal API Payload (Đầy đủ 5 giai đoạn)", expanded=False):
+        with st.expander("📄 DC Hub Portal API Payload (Đầy đủ 5 giai đoạn)", expanded=False):
             st.json(st.session_state.extracted_json)
 
     else:
@@ -1231,7 +1231,7 @@ with col_json:
             "3. Báo giá & Xác nhận đồng ý giá ➔ **Có thể tạo Lead ('Có nhu cầu')**.\n"
             "4. Lấy thông tin liên lạc 2 đầu & Phương thức thanh toán.\n"
             "5. Xác nhận hóa đơn VAT & Xuất **Order Confirmation** ➔ **Tạo Đơn Hàng ('Khách chốt') & Điều xe**!\n\n"
-            "💡 *Mẹo: Bạn có thể bấm nút **'Nạp kịch bản mẫu 5 Giai đoạn'** ở thanh Sidebar bên trái để xem ngay bảng DCHub Portal!*"
+            "💡 *Mẹo: Bạn có thể bấm nút **'Nạp kịch bản mẫu 5 Giai đoạn'** ở thanh Sidebar bên trái để xem ngay bảng DC Hub Portal!*"
         )
 
 

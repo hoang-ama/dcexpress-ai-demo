@@ -11,7 +11,7 @@
 - **Tự động hóa 80%** khối lượng công việc tư vấn, tính cước và tiếp nhận đơn hàng vận tải tại DC Express (Đi Chung Express).
 - **Phản hồi tức thì (< 3 giây)** trên mọi kênh tiếp nhận: **Zalo Official Account (OA)**, **Website Widget** và **Tổng đài VoIP (19006022 / Asterisk)**.
 - **Tối ưu chi phí vận hành (0 VNĐ Token)**: 70% hội thoại chạy bằng LLM mã nguồn mở nội bộ (**Qwen 2.5 7B**); chỉ 30% ca khó/khiếu nại chuyển sang **Gemini 3.8 Flash Cloud AI** với hạn mức Token được kiểm soát nghiêm ngặt.
-- **Tự động đẩy Lead & Đơn hàng** lên hệ thống **DCHub Portal (`portal.dichung.vn`)** kèm báo giá (+30% Margin) và kích hoạt điều phối tài xế.
+- **Tự động đẩy Lead & Đơn hàng** lên hệ thống **DC Hub Portal (`portal.dichung.vn`)** kèm báo giá (+30% Margin) và kích hoạt điều phối tài xế.
 
 ```
                      ┌─────────────────────────────────────────────────────────┐
@@ -33,7 +33,7 @@
 │ LỚP 2: MIDDLEWARE VẬN HÀNH & TÍNH CƯỚC RAG        │ │ LỚP 3: HUMAN-IN-THE-LOOP (HỖ TRỢ TRỰC TIẾP)│
 │ • DC Express Pricing Engine (+30% Margin)         │ │ • Chuyển giao Chatwoot Live Agent        │
 │ • Bóc tách JSON Sạch Payload                      │ │ • Chuyển máy Tổng đài viên (SIP Trunk)   │
-│ • Bắn API Lead sang DCHub Portal                  │ └────────────────────────────────────────────┘
+│ • Bắn API Lead sang DC Hub Portal                  │ └────────────────────────────────────────────┘
 │ • Điều phối tài xế (Bắn SMS/Zalo Khách & Tài xế)  │
 └───────────────────────────────────────────────────┘
 ```
@@ -52,7 +52,7 @@ Cho đến thời điểm hiện tại, dự án đã hoàn thành trọn vẹn 
   - Tự động tính cân nặng quy đổi thể tích theo chuẩn logistics: Đường bộ (`/5000`), Đường bay (`/6000`).
   - Áp dụng triệt để công thức: `Giá báo Khách = Giá gốc đối tác + 30% Margin`.
   - Tính toán và cho phép so sánh song song 2 gói dịch vụ: 🚚 **Đường bộ tiết kiệm (DC Road)** và ✈️ **Hỏa tốc đường bay (DC Air)**.
-- [x] **3. Trích xuất JSON Sạch Chuẩn API DCHub Portal**:
+- [x] **3. Trích xuất JSON Sạch Chuẩn API DC Hub Portal**:
   - Tự động bóc tách bản tổng kết đơn hàng thành cấu trúc JSON hợp lệ 100% để sẵn sàng bắn API sang `portal.dichung.vn/api/v1/leads`.
 - [x] **4. Module Điều Phối Tài Xế (Driver Dispatch Simulation)**:
   - Tích hợp trạng thái xếp chuyến của nhà xe.
@@ -78,8 +78,8 @@ gantt
     section Phase 2 (Zalo & Chatwoot Middleware)
     FastAPI Webhook & Quản lý Session Zalo OA         :done, p2_1, 2026-10-26, 2026-10-26
     Tự động Auto-Renew OAuth Token & Chatwoot Handover:done, p2_2, 2026-10-26, 2026-10-26
-    section Phase 3 (DCHub Backend)
-    Kết nối API Real DCHub Portal (Auth & Sync Lead)  :p3_1, 2026-11-11, 2026-11-17
+    section Phase 3 (DC Hub Backend)
+    Kết nối API Real DC Hub Portal (Auth & Sync Lead)  :p3_1, 2026-11-11, 2026-11-17
     Tự động hóa thông báo Zalo ZNS cho Khách & Tài xế:p3_2, 2026-11-18, 2026-11-24
     section Phase 4 (VoIP Callbot 19006022)
     Kết nối Asterisk SIP Trunk & Voice AI Gateway    :p4_1, 2026-11-25, 2026-12-08
@@ -97,7 +97,7 @@ gantt
 - [x] **Việc 2.1**: **Phát triển FastAPI Webhook Service (`zalo_middleware.py`)**:
   - Đã hoàn thành core service FastAPI hỗ trợ bất đồng bộ qua `BackgroundTasks` (phản hồi HTTP 200 OK ngay < 100ms cho Zalo OpenAPI, tránh timeout).
   - Tích hợp Dual LLM (Local Ollama & Gemini 3.8 Flash Interactions API) với System Prompt 5 giai đoạn.
-  - Tích hợp Pricing Engine (+30% Margin) và trích xuất JSON Lead bắn sang DCHub Portal.
+  - Tích hợp Pricing Engine (+30% Margin) và trích xuất JSON Lead bắn sang DC Hub Portal.
   - Có endpoint giả lập `/simulate/message`, kiểm tra trạng thái `/health`, và quản lý `/sessions`.
 - [x] **Việc 2.2**: **Quản lý Hội thoại & Phiên làm việc (Session Management)**:
   - Lưu ánh xạ: `zalo_user_id` ➔ `UserSession` (in-memory, kiến trúc sẵn sàng cắm Redis).
@@ -113,21 +113,21 @@ gantt
 
 ---
 
-### 🔹 GIAI ĐOẠN 3: KẾT NỐI REAL API DCHUB PORTAL & ZALO NOTIFICATION SERVICE (STATUS: 100% DONE)
+### 🔹 GIAI ĐOẠN 3: KẾT NỐI REAL API DC HUB PORTAL & ZALO NOTIFICATION SERVICE (STATUS: 100% DONE)
 *Mục tiêu: Đơn hàng sau khi chốt sẽ tạo thật trên hệ thống CRM/ERP của Đi Chung (`portal.dichung.vn/booking~express`) và đồng bộ trạng thái điều xe.*
 
-- [x] **Việc 3.1**: **Kết nối API Real DCHub Portal (`dchub_service.py`)**:
+- [x] **Việc 3.1**: **Kết nối API Real DC Hub Portal (`dchub_service.py`)**:
   - Tích hợp thành công API Staging & Production của Đi Chung Portal (`https://staging.portal.dichung.vn` và `https://portal.dichung.vn`).
   - Xác thực qua header `client: kqab0nar_dltg04o7z5b` chuẩn theo tài liệu Postman Đi Chung.
   - **Tạo Lead (`express_lead`)**: Khi có đủ thông tin địa chỉ 2 đầu, loại hàng và thông tin liên hệ ➔ Tự động tạo Lead với trạng thái **"Có nhu cầu"**.
   - **Tạo Đơn hàng chính thức (Booking)**: Khi khách đồng ý báo giá và chốt đơn ➔ Tự động gọi `POST /api/booking/v1/bookings`, sinh mã đơn hàng thật dạng `DC...` (ví dụ `DC181611`), gắn trạng thái **"Khách chốt"**, tình trạng xe **"Chưa điều"**.
   - **Sao chép thông tin đơn hàng chuẩn 100%**: Hỗ trợ modal popup sao chép đầy đủ: Mã đơn, Người gửi/nhận, SĐT, Địa chỉ lấy/trả, Loại hàng, Mô tả hàng, NET, Thu hộ COD khớp chính xác với giao diện thực tế của `portal.dichung.vn/booking~express`.
-  - **Lấy danh sách đơn hàng thực tế**: Kết nối `GET /api/booking/v1/agent/bookings` để hiển thị danh sách đơn hàng thực tế từ DCHub Portal Agent.
+  - **Lấy danh sách đơn hàng thực tế**: Kết nối `GET /api/booking/v1/agent/bookings` để hiển thị danh sách đơn hàng thực tế từ DC Hub Portal Agent.
 - [x] **Việc 3.2**: **Tích hợp Tự động hóa vào Zalo Middleware & Streamlit Dashboard**:
   - `zalo_middleware.py`: Tự động gọi `check_and_create_lead` khi hội thoại đạt giai đoạn 2-3 và gọi `extract_and_push_lead` khi đạt Order Confirmation.
-  - `app.py`: Bổ sung bảng mô phỏng DCHub Portal Express Dashboard, cho phép bấm nút tạo Lead, tạo Đơn hàng chính thức, mở popup sao chép đơn và bấm nút "Điều xe" phát thông báo cho tài xế & khách hàng.
+  - `app.py`: Bổ sung bảng mô phỏng DC Hub Portal Express Dashboard, cho phép bấm nút tạo Lead, tạo Đơn hàng chính thức, mở popup sao chép đơn và bấm nút "Điều xe" phát thông báo cho tài xế & khách hàng.
 - [ ] **Việc 3.3**: **Tích hợp Dịch vụ ZNS (Zalo Notification Service) & SMS Brandname**:
-  - Khi nhà xe xếp chuyến thành công trên DCHub Portal ➔ Webhook từ DCHub bắn ngược về Middleware.
+  - Khi nhà xe xếp chuyến thành công trên DC Hub Portal ➔ Webhook từ DC Hub bắn ngược về Middleware.
   - Middleware tự động gửi mẫu tin ZNS Template được Zalo phê duyệt: *"Đơn hàng DC181580 đã được xếp tài xế [Tên] - [SĐT] - [Biển số]"*.
 
 ---
@@ -176,7 +176,7 @@ gantt
 | **3** | Tích hợp Chatwoot Live Agent (`chatwoot_service.py`) | Fullstack / Python | ✅ **Đã hoàn thành** | Handover 2 chiều giữa Zalo và Chatwoot |
 | **4** | Container hóa hệ thống (`Dockerfile`, `docker-compose.yml`) | DevOps | ✅ **Đã hoàn thành** | Khởi chạy 1 lệnh `docker compose up -d` |
 | **5** | Đăng ký & Xin cấp quyền Webhook trên Zalo Developer | Quản trị Zalo OA / Đi Chung | ⏳ **Đang triển khai** | Làm theo [ZALO_OA_INTEGRATION_GUIDE.md](file:///Users/minhhh/Downloads/Code/dcexpress-ai-demo/ZALO_OA_INTEGRATION_GUIDE.md) |
-| **6** | Kết nối Real API DCHub Portal (`portal.dichung.vn/booking~express`) | Backend / Đi Chung | ✅ **Đã hoàn thành** | `dchub_service.py` tạo Lead 'Có nhu cầu', Đơn 'Khách chốt' (mã DC) & Popup sao chép đơn |
+| **6** | Kết nối Real API DC Hub Portal (`portal.dichung.vn/booking~express`) | Backend / Đi Chung | ✅ **Đã hoàn thành** | `dchub_service.py` tạo Lead 'Có nhu cầu', Đơn 'Khách chốt' (mã DC) & Popup sao chép đơn |
 | **7** | Tích hợp Tổng đài VoIP Asterisk (Callbot 19006022) | Voice AI / Asterisk | 📅 **Sprint tiếp theo (Phase 4)** | PJSIP Trunk + Whisper STT + Voice Agent |
 
 
