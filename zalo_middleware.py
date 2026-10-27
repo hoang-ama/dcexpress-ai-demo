@@ -73,14 +73,23 @@ DCHUB_API_KEY = os.getenv("DCHUB_API_KEY", "demo_dchub_api_key")
 
 CHATWOOT_WEBHOOK_URL = os.getenv("CHATWOOT_WEBHOOK_URL", "")
 
-# System Prompt 5 Giai đoạn chuẩn hóa
-ZALO_CHAT_SYSTEM_PROMPT = """Bạn là Trợ lý AI Chăm sóc Khách hàng của DC Express (Đi Chung Express).
-Phong cách của bạn: Thân thiện, lễ phép, nói năng tự nhiên như người thật, ngắn gọn và chu đáo.
+def contains_chinese(text: str) -> bool:
+    """Kiểm tra xem văn bản có chứa ký tự chữ Hán / tiếng Trung hay không"""
+    if not text:
+        return False
+    return bool(re.search(r"[\u4e00-\u9fff]", text))
 
-QUY TẮC NGÔN NGỮ BẮT BUỘC:
-- 100% TOÀN BỘ CÂU TRẢ LỜI PHẢI BẰNG TIẾNG VIỆT CHUẨN.
-- TUYỆT ĐỐI KHÔNG sử dụng tiếng Trung Quốc (hoặc bất kỳ ký tự chữ Hán nào) trong bất kỳ trường hợp nào!
-- Nếu cần hỏi hình ảnh, hãy nói: "Anh/chị có hình ảnh kiện hàng chụp gửi em xem với nhé ạ".
+
+# System Prompt 5 Giai đoạn chuẩn hóa
+ZALO_CHAT_SYSTEM_PROMPT = """[CRITICAL SYSTEM DIRECTIVE: STRICT VIETNAMESE ONLY]
+You are a Customer Support AI Assistant for DC Express (Đi Chung Express) in Vietnam.
+You MUST communicate 100% EXCLUSIVELY in natural, polite Vietnamese.
+ABSOLUTELY NEVER output ANY Chinese characters (汉字 / 中文) or pinyin under any circumstance!
+Every single sentence, word, and character in your answer must be in Vietnamese.
+
+Bạn là Trợ lý AI Chăm sóc Khách hàng của DC Express (Đi Chung Express).
+Phong cách của bạn: Thân thiện, lễ phép, nói năng tự nhiên như người Việt Nam, ngắn gọn và chu đáo.
+
 
 NGUYÊN TẮC VÀNG VỀ TƯ VẤN:
 "Rả rích từng bước một - Không làm khách ngợp khi nhìn form":
@@ -215,13 +224,38 @@ def call_ai_engine(messages: List[Dict[str, str]]) -> str:
             payload = {
                 "model": OLLAMA_MODEL,
                 "messages": [{"role": "system", "content": ZALO_CHAT_SYSTEM_PROMPT}] + messages,
+                "options": {
+                    "temperature": 0.2,
+                    "top_p": 0.9,
+                },
                 "stream": False,
             }
             res = requests.post(OLLAMA_API_URL, json=payload, timeout=25)
             if res.status_code == 200:
-                return res.json().get("message", {}).get("content", "")
+                content = res.json().get("message", {}).get("content", "")
+                if contains_chinese(content):
+                    # Tự động làm sạch nếu có chữ Hán
+                    clean_res = requests.post(
+                        OLLAMA_API_URL,
+                        json={
+                            "model": OLLAMA_MODEL,
+                            "messages": [
+                                {"role": "system", "content": "Translate and rewrite the following text into 100% natural Vietnamese. Absolutely NO Chinese characters."},
+                                {"role": "user", "content": content}
+                            ],
+                            "options": {"temperature": 0.1},
+                            "stream": False
+                        },
+                        timeout=20
+                    )
+                    if clean_res.status_code == 200:
+                        cand = clean_res.json().get("message", {}).get("content", "")
+                        if cand and not contains_chinese(cand):
+                            return cand
+                return content
         except Exception as e:
             logger.warning(f"Ollama local error: {e}. Fallback sang Gemini...")
+
 
     # 2. Gọi Google Gemini 3.8 Flash qua Interactions API hoặc REST
     api_key = GEMINI_API_KEY.strip()

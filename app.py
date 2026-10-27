@@ -28,18 +28,27 @@ OLLAMA_API_URL = "http://localhost:11434/api/chat"
 OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 MODEL_NAME = "qwen2.5:7b"
 
-# System Prompt 1: Dùng cho hội thoại tư vấn rả rích từng bước (Progressive Slot-Filling)
-CHAT_SYSTEM_PROMPT = """Bạn là Trợ lý AI Chăm sóc Khách hàng của DC Express (Đi Chung Express).
-Phong cách của bạn: Thân thiện, lễ phép, nói năng tự nhiên như người thật, ngắn gọn và chu đáo.
+def contains_chinese(text: str) -> bool:
+    """Kiểm tra xem văn bản có chứa ký tự chữ Hán / tiếng Trung hay không"""
+    if not text:
+        return False
+    return bool(re.search(r"[\u4e00-\u9fff]", text))
 
-QUY TẮC NGÔN NGỮ BẮT BUỘC:
-- 100% TOÀN BỘ CÂU TRẢ LỜI PHẢI BẰNG TIẾNG VIỆT CHUẨN.
-- TUYỆT ĐỐI KHÔNG sử dụng tiếng Trung Quốc (hoặc bất kỳ ký tự chữ Hán nào) trong bất kỳ trường hợp nào!
-- Nếu cần hỏi hình ảnh, hãy nói: "Anh/chị có hình ảnh kiện hàng chụp gửi em xem với nhé ạ".
+
+# System Prompt 1: Dùng cho hội thoại tư vấn rả rích từng bước (Progressive Slot-Filling)
+CHAT_SYSTEM_PROMPT = """[CRITICAL SYSTEM DIRECTIVE: STRICT VIETNAMESE ONLY]
+You are a Customer Support AI Assistant for DC Express (Đi Chung Express) in Vietnam.
+You MUST communicate 100% EXCLUSIVELY in natural, polite Vietnamese.
+ABSOLUTELY NEVER output ANY Chinese characters (汉字 / 中文) or pinyin under any circumstance!
+Every single sentence, word, and character in your answer must be in Vietnamese.
+
+Bạn là Trợ lý AI Chăm sóc Khách hàng của DC Express (Đi Chung Express).
+Phong cách của bạn: Thân thiện, lễ phép, nói năng tự nhiên như người Việt Nam, ngắn gọn và chu đáo.
 
 NGUYÊN TẮC VÀNG VỀ TƯ VẤN:
 "Rả rích từng bước một - Không làm khách ngợp khi nhìn form":
 Tuyệt đối KHÔNG gửi cả danh sách dài nhiều yêu cầu một lúc. Hãy tương tác từng nhóm thông tin theo đúng 5 giai đoạn:
+
 
 ══════════════════════════════════════════════════════════════
 GIAI ĐOẠN 1: THU THẬP THÔNG TIN TÍNH GIÁ (CRITICAL INFO)
@@ -867,6 +876,10 @@ with col_chat:
                             json={
                                 "model": selected_ollama_model,
                                 "messages": ollama_messages,
+                                "options": {
+                                    "temperature": 0.2,
+                                    "top_p": 0.9,
+                                },
                                 "stream": True,
                             },
                             stream=True,
@@ -879,6 +892,31 @@ with col_chat:
                                     token = data.get("message", {}).get("content", "")
                                     full_response += token
                                     message_placeholder.markdown(full_response + "▌")
+                            
+                            # Kiểm tra nếu câu trả lời bị lọt ký tự chữ Hán (do Qwen)
+                            if contains_chinese(full_response):
+                                with st.spinner("Đang chuẩn hóa ngôn ngữ tiếng Việt..."):
+                                    try:
+                                        clean_res = requests.post(
+                                            ollama_chat_url,
+                                            json={
+                                                "model": selected_ollama_model,
+                                                "messages": [
+                                                    {"role": "system", "content": "Translate and rewrite the following text into 100% natural Vietnamese. Absolutely NO Chinese characters."},
+                                                    {"role": "user", "content": full_response}
+                                                ],
+                                                "options": {"temperature": 0.1},
+                                                "stream": False
+                                            },
+                                            timeout=20
+                                        )
+                                        if clean_res.status_code == 200:
+                                            cand = clean_res.json().get("message", {}).get("content", "")
+                                            if cand and not contains_chinese(cand):
+                                                full_response = cand
+                                    except Exception:
+                                        pass
+
                             message_placeholder.markdown(full_response)
                         else:
                             full_response = f"Lỗi phản hồi từ Ollama ({response.status_code}): {response.text}"
@@ -886,6 +924,7 @@ with col_chat:
                     except Exception as e:
                         full_response = f"Lỗi kết nối Ollama: {e}"
                         message_placeholder.error(full_response)
+
 
             # TH2: Chạy Cloud Gemini nếu chọn Gemini
             elif engine_choice.startswith("☁️"):
