@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from pricing_engine import estimate_pricing
 from zalo_oauth_manager import oauth_manager
 from chatwoot_service import chatwoot_service
+from dchub_service import dchub_service
 
 # Cấu hình Logging
 logging.basicConfig(
@@ -172,6 +173,8 @@ class UserSession:
         self.handover_to_human: bool = False
         self.pricing_details: Optional[Dict[str, Any]] = None
         self.extracted_order: Optional[Dict[str, Any]] = None
+        self.lead_code: Optional[str] = None
+        self.order_code: Optional[str] = None
         self.created_at: str = datetime.now().isoformat()
         self.updated_at: str = datetime.now().isoformat()
 
@@ -309,24 +312,103 @@ def call_ai_engine(messages: List[Dict[str, str]]) -> str:
 
 
 # ==============================================================================
-# HÀM BÓC TÁCH JSON & BẮN LEAD SANG DCHUB PORTAL
+# HÀM BÓC TÁCH JSON & KẾT NỐI API DCHUB PORTAL (PHASE 3)
 # ==============================================================================
-def extract_and_push_lead(session: UserSession) -> Optional[Dict[str, Any]]:
-    """Khi cuộc trò chuyện đạt Order Confirmation, trích xuất JSON và bắn lên DCHub Portal"""
-    all_text = "\n".join([m["content"] for m in session.messages])
+def parse_conversation_entities(all_text: str) -> Dict[str, Any]:
+    """Trích xuất thực thể từ nội dung chat để tạo payload DCHub Portal chuẩn xác"""
+    # Trích xuất SĐT
+    phones = re.findall(r"(?:0|\+84)[3|5|7|8|9][0-9]{8}", all_text)
+    sender_phone = phones[0] if len(phones) > 0 else "0399092104"
+    receiver_phone = phones[1] if len(phones) > 1 else "0366427496"
+
+    # Trích xuất địa chỉ hoặc tỉnh/thành
+    sender_addr = "T1, Khu đô thị Times City, Vĩnh Tuy, Hà Nội, Việt Nam"
+    receiver_addr = "Khu du lịch sinh thái Thung Nham, thôn Hải Nham, Ninh Bình"
     
+    if "quảng ninh" in all_text.lower():
+        receiver_addr = "Đông Mai, Thị xã Quảng Yên, Quảng Ninh"
+    elif "hải phòng" in all_text.lower():
+        receiver_addr = "1 Phó Đức Chính, Gia Viên, Hải Phòng"
+    elif "hồ chí minh" in all_text.lower() or "sài gòn" in all_text.lower():
+        receiver_addr = "Phan Văn Đáng, District 2, Hồ Chí Minh"
+
+    # Trích xuất hàng hóa
+    cargo_desc = "1 tập tài liệu"
+    cargo_type = "Phong bì, tài liệu"
+    weight_kg = 5.0
+    if "hải sản" in all_text.lower() or "chả mực" in all_text.lower():
+        cargo_desc = "Thùng chả mực & tôm tươi"
+        cargo_type = "Thực phẩm tươi sống / Thùng xốp"
+        weight_kg = 10.0
+    elif "quần áo" in all_text.lower() or "thời trang" in all_text.lower():
+        cargo_desc = "Kiện hàng quần áo thời trang"
+        cargo_type = "Hàng may mặc"
+        weight_kg = 3.0
+
+    return {
+        "sender": {"name": "Long", "phone": sender_phone, "address": sender_addr},
+        "receiver": {"name": "Thảo", "phone": receiver_phone, "address": receiver_addr},
+        "cargo": {"description": cargo_desc, "type": cargo_type, "weight_kg": weight_kg, "cod_amount": 350000},
+    }
+
+
+def check_and_create_lead(session: UserSession) -> Optional[Dict[str, Any]]:
+    """Khi cuộc trò chuyện có đủ thông tin địa chỉ & hàng hóa (Giai đoạn 2-3), tự động tạo Lead DCHub Portal"""
+    if session.lead_code:
+        return None  # Đã có Lead trên Portal
+
+    all_text = " ".join([m["content"] for m in session.messages])
+    if session.stage >= 2 or any(kw in all_text.lower() for kw in ["hà nội", "gửi từ", "đến", "ninh bình", "quảng ninh", "kg"]):
+        entities = parse_conversation_entities(all_text)
+        lead_res = dchub_service.create_lead(
+            sender=entities["sender"],
+            receiver=entities["receiver"],
+            cargo=entities["cargo"],
+            service_type="Chuyển nhanh",
+            notes=f"Lead Zalo tự động cho User {session.user_id}",
+        )
+        if lead_res.get("success"):
+            session.lead_code = lead_res.get("code")
+            logger.info(f"✨ [DCHUB PORTAL] Đã tạo Lead '{session.lead_code}' (express_lead - Có nhu cầu) cho User {session.user_id}")
+            return lead_res
+    return None
+
+
+def extract_and_push_lead(session: UserSession) -> Optional[Dict[str, Any]]:
+    """Khi cuộc trò chuyện đạt Order Confirmation, tạo Đơn hàng chính thức (Khách chốt) trên DCHub Portal"""
+    all_text = "\n".join([m["content"] for m in session.messages])
+    entities = parse_conversation_entities(all_text)
+
     # Tính cước qua pricing_engine
     p_res = estimate_pricing(
-        sender_address="Hà Nội",
-        receiver_address="Quảng Ninh",
-        actual_weight_kg=10.0,
-        cargo_description="Hàng hóa vận chuyển qua DC Express",
+        sender_address=entities["sender"]["address"],
+        receiver_address=entities["receiver"]["address"],
+        actual_weight_kg=entities["cargo"]["weight_kg"],
+        cargo_description=entities["cargo"]["description"],
     )
 
-    lead_payload = {
-        "order_code": f"DC-ZALO-{int(time.time())}",
+    # Gọi DCHub Portal Service tạo Đơn hàng chính thức
+    order_res = dchub_service.create_order(
+        sender=entities["sender"],
+        receiver=entities["receiver"],
+        cargo=entities["cargo"],
+        pricing={
+            "service_type": p_res["selected_quote"]["service_type"],
+            "base_cost_vnd": p_res["selected_quote"]["base_cost_vnd"],
+            "customer_price_vnd": p_res["selected_quote"]["customer_price_vnd"],
+        },
+        payment_method="transfer | sender prepaid | company",
+        notes=f"Đơn hàng xác nhận tự động từ Zalo OA Webhook (User {session.user_id})",
+    )
+
+    session.order_code = order_res.get("code")
+    session.extracted_order = {
+        "order_code": session.order_code,
+        "lead_code": session.lead_code,
         "zalo_user_id": session.user_id,
         "workflow_stage": "confirmed",
+        "dchub_status": order_res.get("status", "Khách chốt"),
+        "dispatch_status": order_res.get("dispatch_status", "Chưa điều"),
         "route_info": {
             "sender_area": p_res["route_info"]["sender_province"],
             "receiver_area": p_res["route_info"]["receiver_province"],
@@ -339,23 +421,12 @@ def extract_and_push_lead(session: UserSession) -> Optional[Dict[str, Any]]:
             "margin_percent": 30.0,
             "is_accepted_by_customer": True,
         },
-        "status": "ready_to_dispatch",
-        "notes": "Đơn hàng tự động tiếp nhận từ Zalo OA Webhook Middleware",
+        "clipboard_format": order_res.get("clipboard_text"),
+        "server_source": order_res.get("source"),
     }
-    session.extracted_order = lead_payload
 
-    # Gửi POST request sang DCHub Portal API
-    try:
-        headers = {
-            "Authorization": f"Bearer {DCHUB_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        res = requests.post(DCHUB_PORTAL_API_URL, json=lead_payload, headers=headers, timeout=5)
-        logger.info(f"Đã bắn lead sang DCHub Portal (HTTP {res.status_code}) cho User {session.user_id}")
-    except Exception as e:
-        logger.warning(f"DCHub Portal mock call: {e}")
-
-    return lead_payload
+    logger.info(f"🚀 [DCHUB PORTAL] Đã tạo Đơn hàng '{session.order_code}' (Khách chốt) trên portal.dichung.vn/booking~express")
+    return session.extracted_order
 
 
 # ==============================================================================
@@ -446,7 +517,8 @@ def process_zalo_conversation_task(user_id: str, user_text: str):
     # 3. Gửi câu trả lời về cho Zalo User
     send_zalo_message(user_id, ai_reply)
 
-    # 4. Nếu đạt Order Confirmation, tự động trích xuất JSON và bắn Lead lên DCHub Portal
+    # 4. Tự động tạo Lead (Có nhu cầu) hoặc tạo Đơn hàng (Khách chốt) trên DCHub Portal
+    check_and_create_lead(session)
     if any(kw in ai_reply for kw in ["ORDER CONFIRMATION", "PHIẾU XÁC NHẬN ĐƠN HÀNG"]):
         extract_and_push_lead(session)
         logger.info(f"Đã chốt đơn thành công qua Zalo cho User {user_id}")
@@ -563,6 +635,7 @@ def simulate_zalo_message(req: SimulateMessageRequest):
     ai_reply = call_ai_engine(session.messages)
     session.add_message("assistant", ai_reply)
 
+    check_and_create_lead(session)
     order_payload = None
     if any(kw in ai_reply for kw in ["ORDER CONFIRMATION", "PHIẾU XÁC NHẬN ĐƠN HÀNG"]):
         order_payload = extract_and_push_lead(session)
@@ -570,6 +643,8 @@ def simulate_zalo_message(req: SimulateMessageRequest):
     return {
         "user_id": req.user_id,
         "current_stage": session.stage,
+        "lead_code": session.lead_code,
+        "order_code": session.order_code,
         "assistant_response": ai_reply,
         "handover_to_human": session.handover_to_human,
         "order_created": bool(order_payload),

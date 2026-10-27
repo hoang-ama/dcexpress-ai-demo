@@ -26,7 +26,7 @@ jobs:
 
     - name: Check Python Syntax
       run: |
-        python -m py_compile app.py pricing_engine.py zalo_middleware.py zalo_oauth_manager.py chatwoot_service.py
+        python -m py_compile app.py pricing_engine.py zalo_middleware.py zalo_oauth_manager.py chatwoot_service.py dchub_service.py
 
     - name: Test Pricing Engine Calculations
       run: |
@@ -39,7 +39,53 @@ jobs:
         print('✅ Pricing Engine test passed successfully!')
         "
 
-    - name: Test Zalo Middleware Endpoints (FastAPI) & OAuth / Chatwoot
+    - name: Test DCHub Portal API Service (Phase 3)
+      run: |
+        python -c "
+        from dchub_service import dchub_service
+        
+        # Test 1: Tạo Lead express_lead (Có nhu cầu)
+        lead = dchub_service.create_lead(
+            sender={'name': 'Long', 'phone': '0399092104', 'address': 'T1 Times City, Hà Nội'},
+            receiver={'name': 'Thảo', 'phone': '0366427496', 'address': 'Thung Nham, Ninh Bình'},
+            cargo={'description': '1 tập tài liệu', 'type': 'Phong bì, tài liệu', 'weight_kg': 1.0, 'cod_amount': 350000},
+            service_type='Chuyển nhanh'
+        )
+        assert lead['success'] is True
+        assert lead['status'] == 'Có nhu cầu'
+        assert lead['type'] == 'express_lead'
+        assert 'code' in lead and lead['code'].startswith('DC')
+        
+        # Test 2: Tạo Đơn hàng chính thức (Khách chốt)
+        order = dchub_service.create_order(
+            sender={'name': 'Long', 'phone': '0399092104', 'address': 'T1 Times City, Hà Nội'},
+            receiver={'name': 'Thảo', 'phone': '0366427496', 'address': 'Thung Nham, Ninh Bình'},
+            cargo={'description': '1 tập tài liệu', 'type': 'Phong bì, tài liệu', 'weight_kg': 1.0, 'cod_amount': 350000},
+            pricing={'customer_price_vnd': 890000, 'base_cost_vnd': 390000, 'service_type': 'Chuyển nhanh'},
+            payment_method='transfer | sender prepaid | company'
+        )
+        assert order['success'] is True
+        assert order['status'] == 'Khách chốt'
+        assert 'code' in order and order['code'].startswith('DC')
+        
+        # Test 3: Format Modal Clipboard chuẩn theo DCHub Portal
+        cb = order['clipboard_text']
+        assert 'Mã đơn:' in cb
+        assert 'Người gửi: Long' in cb
+        assert 'ĐT: 0399092104' in cb
+        assert 'Người nhận: Thảo' in cb
+        assert 'ĐT: 0366427496' in cb
+        assert 'Mô tả hàng: 1 tập tài liệu' in cb
+        assert 'Loại hàng: Phong bì, tài liệu' in cb
+        assert 'Đ/c lấy: T1 Times City, Hà Nội' in cb
+        assert 'Đ/c trả: Thung Nham, Ninh Bình' in cb
+        assert 'NET: 390,000 đ' in cb
+        assert 'Thu hộ: 350,000 đ' in cb
+        
+        print('✅ DCHub Portal API Service unit tests passed successfully!')
+        "
+
+    - name: Test Zalo Middleware Endpoints (FastAPI) & OAuth / Chatwoot / DCHub
       run: |
         python -c "
         from fastapi.testclient import TestClient
@@ -63,7 +109,17 @@ jobs:
         res_cw = client.post('/chatwoot/webhook', json={'event': 'message_created', 'message_type': 'incoming'})
         assert res_cw.status_code == 200
         
-        print('✅ All Zalo Middleware FastAPI, OAuth & Chatwoot tests passed successfully!')
+        # 5. Simulate Zalo Message flow & DCHub Lead generation
+        res_sim = client.post('/simulate/message', json={
+            'user_id': 'test_zalo_user_phase3',
+            'message': 'Tôi muốn gửi 1 tập tài liệu từ Times City Hà Nội đi Ninh Bình'
+        })
+        assert res_sim.status_code == 200
+        data_sim = res_sim.json()
+        assert data_sim['lead_code'] is not None
+        assert data_sim['lead_code'].startswith('DC')
+        
+        print('✅ All Zalo Middleware, OAuth, Chatwoot & DCHub tests passed successfully!')
         "
 
 

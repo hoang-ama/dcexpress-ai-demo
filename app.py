@@ -4,6 +4,7 @@ import re
 import requests
 import streamlit as st
 from pricing_engine import estimate_pricing
+from dchub_service import dchub_service
 
 # Kiểm tra thư viện Google GenAI SDK chính thức
 try:
@@ -576,6 +577,15 @@ if "pricing_details" not in st.session_state:
 if "driver_dispatched" not in st.session_state:
     st.session_state.driver_dispatched = False
 
+if "dchub_lead" not in st.session_state:
+    st.session_state.dchub_lead = None
+
+if "dchub_order" not in st.session_state:
+    st.session_state.dchub_order = None
+
+if "dchub_live_list" not in st.session_state:
+    st.session_state.dchub_live_list = None
+
 # Sidebar quản lý cấu hình Engine
 with st.sidebar:
     st.header("⚙️ Cấu hình AI Engine")
@@ -999,11 +1009,36 @@ with col_chat:
                     st.rerun()
 
 with col_json:
-    st.subheader("⚡ DCHub Portal API & Driver Dispatch")
-    st.caption("Quản lý Đơn hàng, Tính cước RAG, Trích xuất JSON & Xếp tài xế điều xe")
+    st.subheader("⚡ DCHub Portal Express & Driver Dispatch")
+    st.markdown(
+        "[🔗 Mở DCHub Portal Express](https://portal.dichung.vn/booking~express) &nbsp;|&nbsp; "
+        "🟢 **Staging API Live** (`client: kqab...04o7z5b`)"
+    )
+
+    # Nút đồng bộ nhanh đơn hàng thực tế từ Staging DCHub Portal
+    col_sync1, col_sync2 = st.columns([2, 1])
+    with col_sync2:
+        if st.button("🔄 Tải đơn từ DCHub", use_container_width=True, help="Lấy danh sách đơn hàng thực tế từ Đi Chung Staging"):
+            with st.spinner("Đang tải dữ liệu từ DCHub Portal API..."):
+                bookings = dchub_service.list_bookings(limit=5)
+                st.session_state.dchub_live_list = bookings
+                st.success(f"Đã tải {len(bookings)} đơn thực tế từ DCHub!")
+
+    # 1. BẢNG HIỂN THỊ ĐƠN HÀNG THỰC TẾ NẾU VỪA TẢI VỀ
+    if st.session_state.dchub_live_list:
+        with st.expander(f"📦 Danh sách {len(st.session_state.dchub_live_list)} đơn hàng thực tế từ DCHub Portal Staging", expanded=False):
+            for b in st.session_state.dchub_live_list:
+                st.markdown(
+                    f"**Mã đơn:** `{b.get('code', 'N/A')}` | **ID:** `{b.get('_id')}` | **Trạng thái:** `{b.get('status')}`  \n"
+                    f"- **Người gửi:** {b.get('bookingUser', {}).get('fullName')} ({b.get('bookingUser', {}).get('phone')})  \n"
+                    f"- **Điểm lấy:** {b.get('startPoint', {}).get('name') or b.get('startPlace', {}).get('formatted_address')}  \n"
+                    f"- **Điểm trả:** {b.get('endPoint', {}).get('name') or b.get('endPlace', {}).get('formatted_address')}  \n"
+                    f"- **Tổng tiền:** {b.get('payment', {}).get('totalCost', 0):,} đ"
+                )
+                st.divider()
 
     if st.session_state.extracted_json:
-        st.success("✅ Đơn hàng đã chốt thành công qua 5 Giai đoạn!")
+        st.success("✅ Đơn hàng đã chốt qua 5 Giai đoạn & Sẵn sàng đồng bộ DCHub Portal!")
 
         # 1. HIỂN THỊ MODULE PRICING ENGINE
         if st.session_state.pricing_details:
@@ -1021,7 +1056,6 @@ with col_json:
                 with c2:
                     st.metric("Cân nặng tính cước", f"{weight_m['road_chargeable_kg']} kg")
 
-                # Danh sách các gói cước để khách/nhân viên chọn
                 service_choices = []
                 service_map = {}
 
@@ -1055,75 +1089,149 @@ with col_json:
                         "is_accepted_by_customer": True,
                     }
 
-        # 2. MODULE ĐIỀU PHỐI TÀI XẾ (DRIVER DISPATCH)
+        # 2. BẢNG MÔ PHỎNG DCHUB PORTAL EXPRESS DASHBOARD CHUẨN THEO ẢNH THỰC TẾ
+        ext = st.session_state.extracted_json
+        sender_name = ext.get("sender", {}).get("name") or "Long"
+        sender_phone = ext.get("sender", {}).get("phone") or "0399092104"
+        sender_addr = ext.get("sender", {}).get("address") or "T1, Khu đô thị Times City, Vĩnh Tuy, Hà Nội, Việt Nam"
+
+        receiver_name = ext.get("receiver", {}).get("name") or "Thảo"
+        receiver_phone = ext.get("receiver", {}).get("phone") or "0366427496"
+        receiver_addr = ext.get("receiver", {}).get("address") or "Khu du lịch sinh thái Thung Nham, thôn Hải Nham, Ninh Bình"
+
+        cargo_desc = ext.get("cargo", {}).get("description") or "1 tập tài liệu"
+        cargo_type = ext.get("cargo", {}).get("cargo_type") or "Phong bì, tài liệu"
+        cargo_weight = ext.get("cargo", {}).get("weight_kg") or 5.0
+
+        customer_price = ext.get("pricing", {}).get("customer_quote_vnd") or 890000
+        net_price = ext.get("pricing", {}).get("base_cost_vnd") or 390000
+        cod_amount = ext.get("cargo", {}).get("cod_amount") or 350000
+
         with st.container(border=True):
-            st.markdown("#### 🚖 Xếp Chuyến & Điều Phối Tài Xế (Nhà Xe)")
-            
-            if not st.session_state.driver_dispatched:
-                st.warning("🟡 Trạng thái: **Đang chờ nhà xe xếp tài xế...**")
-                if st.button("📲 Xếp Tài Xế & Bắn SMS/Zalo Tự Động", type="primary", use_container_width=True):
-                    st.session_state.driver_dispatched = True
-                    st.session_state.extracted_json["dispatch_and_driver"] = {
-                        "status": "driver_assigned",
-                        "driver_name": "Nguyễn Văn Tuấn",
-                        "driver_phone": "0988.123.456",
-                        "vehicle_plate": "29H-123.45",
-                        "carrier_name": "Nhà xe Hải Phòng - Quảng Ninh Express",
-                        "customer_notified": True,
-                        "driver_notified": True,
-                    }
-                    st.rerun()
-            else:
-                st.success("🟢 **ĐÃ ĐIỀU PHỐI TÀI XẾ THÀNH CÔNG!**")
-                
-                col_d1, col_d2 = st.columns(2)
-                with col_d1:
-                    st.markdown("**Tài xế**: Nguyễn Văn Tuấn\n\n**SĐT**: `0988.123.456`")
-                with col_d2:
-                    st.markdown("**Biển số xe**: `29H-123.45`\n\n**Nhà xe**: HP - QN Express")
-                
-                st.markdown("##### 📨 Thông báo tự động đã phát:")
-                st.info(
-                    "💬 **Gửi Khách hàng (Zalo/SMS ➔ 0354327916)**:\n"
-                    "\"*DC Express thông báo: Tài xế Nguyễn Văn Tuấn (SĐT: 0988.123.456, xe 29H-123.45) đã nhận đơn DC-HNQN-20261025-01 và sẽ qua lấy hàng chiều nay trước 16:00!*\""
-                )
-                st.info(
-                    "🚚 **Gửi Tài xế (App/SMS ➔ 0988123456)**:\n"
-                    "\"*Lệnh nhận hàng DC-HNQN-20261025-01: Lấy tại 144 Xuân Thủy (Nhung 0354327916) giao Đông Mai, QN (anh Khánh 0359920667). Thu cước: 118.000 đ tiền mặt tại đầu gửi!*\""
-                )
+            st.markdown("### 🖥️ Màn hình DCHub Portal (`portal.dichung.vn/booking~express`)")
+
+            # HÀNG ACTION: 2 NÚT CHÍNH (TẠO LEAD & TẠO ĐƠN HÀNG)
+            act_col1, act_col2 = st.columns(2)
+            with act_col1:
+                if st.button("📑 Tạo Lead (express_lead - 'Có nhu cầu')", use_container_width=True, type="secondary"):
+                    with st.spinner("Đang gửi Lead lên DCHub Portal..."):
+                        lead_res = dchub_service.create_lead(
+                            sender={"name": sender_name, "phone": sender_phone, "address": sender_addr},
+                            receiver={"name": receiver_name, "phone": receiver_phone, "address": receiver_addr},
+                            cargo={"description": cargo_desc, "type": cargo_type, "weight_kg": cargo_weight, "cod_amount": cod_amount},
+                            service_type=ext.get("pricing", {}).get("service_type") or "Chuyển nhanh",
+                        )
+                        st.session_state.dchub_lead = lead_res
+                        st.toast(f"Đã tạo Lead {lead_res['code']} trên DCHub Portal!", icon="📑")
+
+            with act_col2:
+                if st.button("🚀 Tạo Đơn Hàng Chính Thức ('Khách chốt')", use_container_width=True, type="primary"):
+                    with st.spinner("Đang tạo đơn hàng và sinh mã DC trên DCHub Portal..."):
+                        order_res = dchub_service.create_order(
+                            sender={"name": sender_name, "phone": sender_phone, "address": sender_addr},
+                            receiver={"name": receiver_name, "phone": receiver_phone, "address": receiver_addr},
+                            cargo={"description": cargo_desc, "type": cargo_type, "weight_kg": cargo_weight, "cod_amount": cod_amount},
+                            pricing={"customer_price_vnd": customer_price, "base_cost_vnd": net_price, "service_type": ext.get("pricing", {}).get("service_type") or "Chuyển nhanh"},
+                            payment_method="transfer | sender prepaid | company",
+                        )
+                        st.session_state.dchub_order = order_res
+                        st.toast(f"Đã tạo đơn {order_res['code']} thành công trên DCHub Portal!", icon="🎉")
+
+            # HIỂN THỊ DÒNG ĐƠN HÀNG / LEAD CHUẨN THEO ẢNH
+            current_code = (
+                st.session_state.dchub_order.get("code")
+                if st.session_state.dchub_order
+                else (st.session_state.dchub_lead.get("code") if st.session_state.dchub_lead else "DC181611")
+            )
+
+            is_order_confirmed = bool(st.session_state.dchub_order)
+            status_tag = "Khách chốt" if is_order_confirmed else "Có nhu cầu"
+            status_color = "green" if is_order_confirmed else "blue"
+            dispatch_status = "Đã điều" if st.session_state.driver_dispatched else "Chưa điều"
+
+            st.markdown(
+                f"""
+                <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #ced4da; padding-bottom: 8px;">
+                        <div>
+                            <span style="background-color: {'#28a745' if status_color == 'green' else '#007bff'}; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 13px;">{status_tag}</span>
+                            <span style="font-weight: bold; font-size: 16px; margin-left: 8px; color: #1e3a8a;">{current_code}</span>
+                            <span style="color: #6c757d; font-size: 13px;">(express_lead - Chuyển nhanh)</span>
+                        </div>
+                        <div>
+                            <span style="font-size: 12px; color: #6c757d;">PIC tiếp nhận:</span>
+                            <b style="font-size: 13px; color: #333;"> Nguyễn Thành Nam</b>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1.5fr; gap: 12px; padding-top: 10px; font-size: 13px;">
+                        <div>
+                            <div>👤 <b>Người gửi:</b> {sender_name} ({sender_phone})</div>
+                            <div style="color: #555;">📍 <i>Lấy:</i> {sender_addr}</div>
+                            <div style="margin-top: 6px;">👤 <b>Người nhận:</b> {receiver_name} ({receiver_phone})</div>
+                            <div style="color: #555;">📍 <i>Trả:</i> {receiver_addr}</div>
+                        </div>
+                        <div>
+                            <div>📦 <b>Hàng hóa:</b> {cargo_desc}</div>
+                            <div>🏷️ <b>Loại:</b> {cargo_type}</div>
+                            <div>⚖️ <b>Khối lượng:</b> {cargo_weight} kg</div>
+                            <div>💵 <b>Thu hộ:</b> <b style="color: #d97706;">{cod_amount:,} đ</b></div>
+                        </div>
+                        <div style="border-left: 1px solid #e5e7eb; padding-left: 10px;">
+                            <div>💰 <b>Cước khách:</b> <b style="color: #059669; font-size: 15px;">{customer_price:,} đ</b></div>
+                            <div>📊 <b>NET:</b> {net_price:,} đ</div>
+                            <div>💳 <b>Thanh toán:</b> <code>transfer | sender prepaid</code></div>
+                            <div style="margin-top: 4px;">🚚 <b>Nhà xe:</b> 1 DiChung | <b>Tình trạng:</b> <span style="color: {'#28a745' if dispatch_status == 'Đã điều' else '#dc3545'}; font-weight: bold;">{dispatch_status}</span></div>
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # MODAL POPUP: SAO CHÉP THÔNG TIN ĐƠN HÀNG (CHUẨN 100% NHƯ ẢNH)
+            clipboard_text = dchub_service.format_order_clipboard(
+                code=current_code,
+                sender={"name": sender_name, "phone": sender_phone, "address": sender_addr},
+                receiver={"name": receiver_name, "phone": receiver_phone, "address": receiver_addr},
+                cargo={"description": cargo_desc, "type": cargo_type, "weight_kg": cargo_weight, "cod_amount": cod_amount},
+                pricing={"net_cost": net_price, "customer_cost": customer_price},
+                notes="--",
+            )
+
+            with st.expander("📋 Xem & Sao chép thông tin đơn hàng (Modal Popup chuẩn DCHub Portal)", expanded=True):
+                st.caption("Khung định dạng chuẩn 100% khớp với popup 'Sao chép thông tin đơn hàng' trên portal.dichung.vn:")
+                st.text_area("Nội dung sao chép:", value=clipboard_text, height=220, disabled=True)
+                st.code(clipboard_text, language="yaml")
+
+            # NÚT ĐIỀU XE
+            col_dx1, col_dx2 = st.columns([1, 1])
+            with col_dx1:
+                if not st.session_state.driver_dispatched:
+                    if st.button("🚖 Bấm nút 'Điều xe' (Phát thông báo cho Tài xế)", use_container_width=True, type="primary"):
+                        st.session_state.driver_dispatched = True
+                        st.toast("Đã điều xe cho tài xế Nguyễn Văn Tuấn!", icon="🚗")
+                        st.rerun()
+                else:
+                    st.success("🟢 ĐÃ ĐIỀU XE: Tài xế Nguyễn Văn Tuấn (29H-123.45)")
+            with col_dx2:
+                if st.session_state.driver_dispatched:
+                    if st.button("Hủy điều xe / Đặt lại", use_container_width=True):
+                        st.session_state.driver_dispatched = False
+                        st.rerun()
 
         # 3. HIỂN THỊ CẤU TRÚC JSON SẠCH MỤC TIÊU DCHUB PORTAL
-        st.markdown("##### 📄 DCHub Portal API Payload (Đầy đủ 5 giai đoạn):")
-        st.json(st.session_state.extracted_json)
+        with st.expander("📄 DCHub Portal API Payload (Đầy đủ 5 giai đoạn)", expanded=False):
+            st.json(st.session_state.extracted_json)
 
-        # 4. MÔ PHỎNG NÚT BẮN API TẠO LEAD
-        if st.button("🚀 Bắn API Tạo Lead lên DCHub Portal", type="secondary", use_container_width=True):
-            st.info("📡 Đang gửi POST request đến `https://portal.dichung.vn/api/v1/leads`...")
-            st.success("🎉 [API 200 OK] Đã tạo Lead kèm Cước phí & Thông tin vận hành thành công trên DCHub Portal!")
-            st.code(
-                json.dumps(
-                    {
-                        "status": "success",
-                        "code": 200,
-                        "lead_id": "DC-HNQN-20261025-01",
-                        "customer_quote": st.session_state.extracted_json.get("pricing", {}).get("customer_quote_vnd"),
-                        "payer": st.session_state.extracted_json.get("payment", {}).get("payer_display"),
-                        "driver_status": st.session_state.extracted_json.get("dispatch_and_driver", {}).get("status"),
-                        "message": "Đơn hàng đã xác nhận và đồng bộ trạng thái điều phối tài xế thành công.",
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-                language="json",
-            )
     else:
         st.info(
             "⏳ **Trợ lý AI đang tư vấn khách hàng theo 5 giai đoạn...**\n\n"
-            "1. Hỏi điểm nhận & trả hàng.\n"
-            "2. Hỏi thông tin hàng hóa.\n"
-            "3. Hỏi thời gian & ghi chú ➔ **Báo giá & Xác nhận đồng ý giá**.\n"
-            "4. Lấy thông tin liên lạc 2 đầu & Bên thanh toán, cách thanh toán.\n"
-            "5. Hỏi hóa đơn VAT & Bảo hiểm ➔ Xuất **Order Confirmation** & Xếp tài xế!\n\n"
-            "💡 *Mẹo: Bạn có thể bấm nút **'Nạp kịch bản mẫu 5 Giai đoạn'** ở thanh Sidebar bên trái để trải nghiệm luồng hoàn chỉnh ngay!*"
+            "1. Thu thập điểm nhận & trả hàng.\n"
+            "2. Thu thập thông tin hàng hóa.\n"
+            "3. Báo giá & Xác nhận đồng ý giá ➔ **Có thể tạo Lead ('Có nhu cầu')**.\n"
+            "4. Lấy thông tin liên lạc 2 đầu & Phương thức thanh toán.\n"
+            "5. Xác nhận hóa đơn VAT & Xuất **Order Confirmation** ➔ **Tạo Đơn Hàng ('Khách chốt') & Điều xe**!\n\n"
+            "💡 *Mẹo: Bạn có thể bấm nút **'Nạp kịch bản mẫu 5 Giai đoạn'** ở thanh Sidebar bên trái để xem ngay bảng DCHub Portal!*"
         )
+
 
