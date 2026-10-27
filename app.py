@@ -185,14 +185,43 @@ Trạng thái: ĐÃ XÁC NHẬN ĐƠN ➔ ĐANG ĐIỀU PHỐI TÀI XẾ
 
 
 
-@st.cache_data(ttl=10)
-def check_ollama_available():
-    """Kiểm tra xem Ollama local có đang chạy không"""
+# Cấu hình mặc định Ollama
+DEFAULT_OLLAMA_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434").replace("/api/chat", "").rstrip("/")
+DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
+
+
+@st.cache_data(ttl=5)
+def check_ollama_available(base_url: str = DEFAULT_OLLAMA_URL) -> bool:
+    """Kiểm tra xem Ollama server có đang phản hồi không"""
+    clean_url = base_url.strip().rstrip("/")
+    if not clean_url:
+        return False
     try:
-        r = requests.get(OLLAMA_TAGS_URL, timeout=1.5)
+        r = requests.get(f"{clean_url}/api/tags", timeout=2.5)
         return r.status_code == 200
     except Exception:
         return False
+
+
+@st.cache_data(ttl=10)
+def get_ollama_models(base_url: str = DEFAULT_OLLAMA_URL):
+    """Lấy danh sách các model đang cài đặt trên Ollama server"""
+    clean_url = base_url.strip().rstrip("/")
+    if not clean_url:
+        return False, [], "Chưa nhập địa chỉ URL của Ollama"
+    try:
+        r = requests.get(f"{clean_url}/api/tags", timeout=3.5)
+        if r.status_code == 200:
+            data = r.json()
+            models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+            if not models:
+                models = [DEFAULT_OLLAMA_MODEL]
+            return True, models, ""
+        return False, [], f"Máy chủ phản hồi HTTP {r.status_code}"
+    except requests.exceptions.ConnectionError:
+        return False, [], f"Không thể kết nối tới {clean_url}."
+    except Exception as e:
+        return False, [], f"Lỗi: {e}"
 
 
 # Danh sách các model mới nhất theo chuẩn Gemini 3
@@ -202,6 +231,7 @@ PREFERRED_MODELS = [
     "gemini-3.7-flash",
     "gemini-3.5-flash-lite",
 ]
+
 
 # Các từ khóa của model cũ đã bị Google khai tử / deprecated
 DEPRECATED_MODEL_KEYWORDS = ["2.5", "2.0", "1.5", "1.0"]
@@ -400,15 +430,24 @@ def parse_clean_json_regex(text: str):
     return None
 
 
-def extract_clean_json(summary_text, api_key="", selected_model=""):
-    """Trích xuất JSON sạch từ bản tổng kết thông tin đơn hàng"""
-    # 1. Thử gọi qua Ollama nếu có
-    if check_ollama_available():
+def extract_clean_json(
+    summary_text: str,
+    engine_mode: str = "cloud",
+    ollama_url: str = DEFAULT_OLLAMA_URL,
+    selected_ollama_model: str = DEFAULT_OLLAMA_MODEL,
+    api_key: str = "",
+    selected_gemini_model: str = "gemini-3.8-flash",
+):
+    """Trích xuất JSON sạch từ bản tổng kết thông tin đơn hàng theo Engine đã chọn"""
+    # 1. Nếu chọn hoặc ưu tiên Ollama
+    if engine_mode == "ollama" and ollama_url:
+        clean_url = ollama_url.strip().rstrip("/")
+        chat_url = f"{clean_url}/api/chat"
         try:
             response = requests.post(
-                OLLAMA_API_URL,
+                chat_url,
                 json={
-                    "model": MODEL_NAME,
+                    "model": selected_ollama_model,
                     "messages": [
                         {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
                         {
@@ -428,20 +467,21 @@ def extract_clean_json(summary_text, api_key="", selected_model=""):
         except Exception as e:
             st.warning(f"Ollama Extraction gặp sự cố: {e}")
 
-    # 2. Thử gọi Gemini API nếu có key
+    # 2. Nếu chọn hoặc fallback sang Gemini API
     if api_key:
         try:
             content = call_gemini_api(
                 api_key,
                 EXTRACTION_SYSTEM_PROMPT,
                 f"Hãy trích xuất văn bản sau ra JSON sạch:\n{summary_text}",
-                selected_model,
+                selected_gemini_model,
             )
             res = parse_clean_json_regex(content)
             if res:
                 return res
         except Exception as e:
             st.warning(f"Gemini Extraction gặp sự cố: {e}")
+
 
     # 3. Fallback Regex Parsing thuần túy (Luôn hoạt động 100% trên Cloud demo)
     return {
@@ -530,49 +570,100 @@ if "driver_dispatched" not in st.session_state:
 # Sidebar quản lý cấu hình Engine
 with st.sidebar:
     st.header("⚙️ Cấu hình AI Engine")
-    is_ollama_up = check_ollama_available()
 
-    if is_ollama_up:
-        st.success("🟢 **Ollama Local Engine**: Đang hoạt động (`qwen2.5:7b`)")
-        engine_mode = "Ollama Local (0đ Token)"
-    else:
-        st.info("☁️ **Cloud Online Mode** (Không tìm thấy Ollama local)")
-        engine_mode = "Cloud Mode (Gemini / Fallback)"
+    # 1. Cho phép người dùng chủ động lựa chọn Engine
+    local_ollama_detected = check_ollama_available(DEFAULT_OLLAMA_URL)
+    default_engine_idx = 1 if local_ollama_detected else 0
 
-    # Cấu hình Gemini API Key khi chạy online
-    gemini_key_env = os.getenv("GEMINI_API_KEY", "")
-    try:
-        gemini_key_secrets = st.secrets.get("GEMINI_API_KEY", "")
-    except Exception:
-        gemini_key_secrets = ""
-
-    default_key = gemini_key_secrets or gemini_key_env
-    user_api_key = st.text_input(
-        "Gemini API Key (Tùy chọn):",
-        value=default_key,
-        type="password",
-        help="Lấy API Key miễn phí từ https://aistudio.google.com/apikey",
+    engine_choice = st.radio(
+        "Lựa chọn AI Engine:",
+        options=["☁️ Google Gemini API (Cloud)", "🖥️ Ollama AI Engine (Local / Remote)"],
+        index=default_engine_idx,
+        help="Chọn Google Gemini API để chạy trên đám mây hoặc Ollama để tự chạy model local (0đ token)."
     )
 
     selected_gemini_model = "gemini-3.8-flash"
-    if user_api_key:
-        available_models, err = get_supported_gemini_models(user_api_key)
-        if available_models:
-            st.success(f"✅ Key hợp lệ! ({len(available_models)} models)")
+    user_api_key = ""
+    ollama_url = DEFAULT_OLLAMA_URL
+    selected_ollama_model = DEFAULT_OLLAMA_MODEL
+    is_engine_ready = False
 
-            # Ưu tiên chọn gemini-3.8-flash
-            default_idx = 0
-            if "gemini-3.8-flash" in available_models:
-                default_idx = available_models.index("gemini-3.8-flash")
+    # CHẾ ĐỘ 1: GOOGLE GEMINI API (CLOUD)
+    if engine_choice == "☁️ Google Gemini API (Cloud)":
+        gemini_key_env = os.getenv("GEMINI_API_KEY", "")
+        try:
+            gemini_key_secrets = st.secrets.get("GEMINI_API_KEY", "")
+        except Exception:
+            gemini_key_secrets = ""
 
-            selected_gemini_model = st.selectbox(
-                "Chọn Gemini Model:",
-                options=available_models,
-                index=default_idx,
+        default_key = gemini_key_secrets or gemini_key_env
+        user_api_key = st.text_input(
+            "Gemini API Key:",
+            value=default_key,
+            type="password",
+            help="Lấy API Key miễn phí từ https://aistudio.google.com/apikey",
+        )
+
+        if user_api_key:
+            available_models, err = get_supported_gemini_models(user_api_key)
+            if available_models:
+                st.success(f"✅ Key hợp lệ! ({len(available_models)} models)")
+                default_idx = 0
+                if "gemini-3.8-flash" in available_models:
+                    default_idx = available_models.index("gemini-3.8-flash")
+
+                selected_gemini_model = st.selectbox(
+                    "Chọn Gemini Model:",
+                    options=available_models,
+                    index=default_idx,
+                )
+                is_engine_ready = True
+            elif err:
+                st.error(f"❌ {err}")
+                st.caption("👉 Lấy API key miễn phí tại: [Google AI Studio](https://aistudio.google.com/apikey)")
+        else:
+            st.info("ℹ️ Nhập API Key hoặc cấu hình `GEMINI_API_KEY` trong Secrets để kích hoạt.")
+
+    # CHẾ ĐỘ 2: OLLAMA AI ENGINE (LOCAL HOẶC REMOTE QUA NGROK)
+    else:
+        st.markdown("**Cấu hình máy chủ Ollama:**")
+        saved_url = st.session_state.get("ollama_url_input", DEFAULT_OLLAMA_URL)
+        ollama_url = st.text_input(
+            "Ollama Server URL:",
+            value=saved_url,
+            help="Chạy Local Mac: http://localhost:11434. Chạy trên Streamlit Cloud: nhập URL Ngrok/Cloudflare (vd: https://xxxx.ngrok-free.app)."
+        )
+        st.session_state.ollama_url_input = ollama_url
+
+        is_up, models, err_msg = get_ollama_models(ollama_url)
+        if is_up:
+            st.success(f"🟢 **Ollama Đang Hoạt Động!** ({len(models)} models)")
+            default_m_idx = 0
+            if "qwen2.5:7b" in models:
+                default_m_idx = models.index("qwen2.5:7b")
+
+            selected_ollama_model = st.selectbox(
+                "Chọn Ollama Model:",
+                options=models,
+                index=default_m_idx,
             )
-        elif err:
-            st.caption(f"ℹ️ {err}")
-            st.caption("👉 Lấy API key miễn phí tại: [Google AI Studio](https://aistudio.google.com/apikey)")
+            is_engine_ready = True
+        else:
+            st.warning(f"🔴 **Chưa kết nối được Ollama**: {err_msg}")
+            with st.expander("🌐 Cách kết nối Ollama với Streamlit Cloud", expanded=True):
+                st.markdown(
+                    """
+                    Khi mở web trên **`streamlit.app` (Cloud)**, server không thể gọi trực tiếp `localhost` của máy Mac. Để kết nối:
+                    1. Mở Terminal trên máy tính, chạy:
+                       ```bash
+                       ngrok http 11434
+                       ```
+                       *(Hoặc `cloudflared tunnel --url http://localhost:11434`)*
+                    2. Copy link công khai (ví dụ: `https://xxxx.ngrok-free.app`).
+                    3. Dán vào ô **Ollama Server URL** ở trên và nhấn Enter!
+                    """
+                )
+
 
     st.markdown("---")
     st.subheader("🚀 Demo Nhanh 1-Click")
@@ -652,7 +743,14 @@ with st.sidebar:
         ]
 
         # Tính toán cước phí và trích xuất JSON
-        json_data = extract_clean_json(SAMPLE_ORDER_TEXT, user_api_key, selected_gemini_model)
+        json_data = extract_clean_json(
+            SAMPLE_ORDER_TEXT,
+            engine_mode="ollama" if engine_choice.startswith("🖥️") else "gemini",
+            ollama_url=ollama_url,
+            selected_ollama_model=selected_ollama_model,
+            api_key=user_api_key,
+            selected_gemini_model=selected_gemini_model,
+        )
         pricing_res = estimate_pricing(
             sender_address="144 Đ. Xuân Thủy, Cầu Giấy, Hà Nội, Việt Nam",
             receiver_address="Đông Mai, Quảng Ninh, Việt Nam",
@@ -749,58 +847,71 @@ with col_chat:
             message_placeholder = st.empty()
             full_response = ""
 
-            # TH1: Chạy Ollama Local
-            if is_ollama_up:
-                ollama_messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}] + [
-                    {"role": m["role"], "content": m["content"]}
-                    for m in st.session_state.messages
-                ]
-                try:
-                    response = requests.post(
-                        OLLAMA_API_URL,
-                        json={
-                            "model": MODEL_NAME,
-                            "messages": ollama_messages,
-                            "stream": True,
-                        },
-                        stream=True,
+            # TH1: Chạy Ollama AI Engine (Local hoặc Ngrok Remote)
+            if engine_choice.startswith("🖥️"):
+                if not is_engine_ready:
+                    full_response = (
+                        f"Chưa kết nối được với máy chủ Ollama tại `{ollama_url}`. "
+                        "Vui lòng kiểm tra lại URL hoặc chuyển sang chế độ **☁️ Google Gemini API (Cloud)** ở thanh Sidebar bên trái!"
                     )
-                    if response.status_code == 200:
-                        for line in response.iter_lines():
-                            if line:
-                                data = json.loads(line.decode("utf-8"))
-                                token = data.get("message", {}).get("content", "")
-                                full_response += token
-                                message_placeholder.markdown(full_response + "▌")
-                        message_placeholder.markdown(full_response)
-                    else:
-                        full_response = f"Lỗi kết nối Ollama: {response.status_code}"
-                        message_placeholder.error(full_response)
-                except Exception as e:
-                    full_response = f"Lỗi kết nối Ollama: {e}"
-                    message_placeholder.error(full_response)
-
-            # TH2: Chạy Cloud Gemini nếu có Key
-            elif user_api_key:
-                with st.spinner("Đang kết nối Gemini AI..."):
+                    message_placeholder.warning(full_response)
+                else:
+                    ollama_chat_url = f"{ollama_url.strip().rstrip('/')}/api/chat"
+                    ollama_messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}] + [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in st.session_state.messages
+                    ]
                     try:
-                        chat_context = "\n".join(
-                            [f"{m['role']}: {m['content']}" for m in st.session_state.messages]
+                        response = requests.post(
+                            ollama_chat_url,
+                            json={
+                                "model": selected_ollama_model,
+                                "messages": ollama_messages,
+                                "stream": True,
+                            },
+                            stream=True,
+                            timeout=60,
                         )
-                        full_response = call_gemini_api(
-                            user_api_key, CHAT_SYSTEM_PROMPT, chat_context, selected_gemini_model
-                        )
-                        message_placeholder.markdown(full_response)
+                        if response.status_code == 200:
+                            for line in response.iter_lines():
+                                if line:
+                                    data = json.loads(line.decode("utf-8"))
+                                    token = data.get("message", {}).get("content", "")
+                                    full_response += token
+                                    message_placeholder.markdown(full_response + "▌")
+                            message_placeholder.markdown(full_response)
+                        else:
+                            full_response = f"Lỗi phản hồi từ Ollama ({response.status_code}): {response.text}"
+                            message_placeholder.error(full_response)
                     except Exception as e:
-                        full_response = f"Lỗi xử lý Gemini: {e}"
+                        full_response = f"Lỗi kết nối Ollama: {e}"
                         message_placeholder.error(full_response)
+
+            # TH2: Chạy Cloud Gemini nếu chọn Gemini
+            elif engine_choice.startswith("☁️"):
+                if not user_api_key:
+                    full_response = (
+                        "Vui lòng nhập **Gemini API Key** ở thanh Sidebar bên trái để trò chuyện, "
+                        "hoặc bấm nút **'Nạp kịch bản mẫu 5 Giai đoạn'** để trải nghiệm nhanh!"
+                    )
+                    message_placeholder.info(full_response)
+                else:
+                    with st.spinner(f"Đang kết nối Gemini AI ({selected_gemini_model})..."):
+                        try:
+                            chat_context = "\n".join(
+                                [f"{m['role']}: {m['content']}" for m in st.session_state.messages]
+                            )
+                            full_response = call_gemini_api(
+                                user_api_key, CHAT_SYSTEM_PROMPT, chat_context, selected_gemini_model
+                            )
+                            message_placeholder.markdown(full_response)
+                        except Exception as e:
+                            full_response = f"Lỗi xử lý Gemini: {e}"
+                            message_placeholder.error(full_response)
 
             # TH3: Chế độ Fallback thông báo
             else:
-                full_response = (
-                    "Hệ thống đang chạy trên Server Online (không có Ollama local). "
-                    "Vui lòng nhập **Gemini API Key** ở thanh Sidebar bên trái hoặc bấm nút **'Nạp kịch bản mẫu 5 Giai đoạn'** để kiểm tra tính năng!"
-                )
+                full_response = "Vui lòng cấu hình AI Engine ở Sidebar bên trái để bắt đầu trò chuyện!"
                 message_placeholder.info(full_response)
 
         st.session_state.messages.append(
@@ -810,7 +921,15 @@ with col_chat:
         # Kiểm tra nếu câu trả lời chứa Phiếu xác nhận đơn hàng hoặc bản chốt đơn
         if any(kw in full_response for kw in ["ORDER CONFIRMATION", "PHIẾU XÁC NHẬN ĐƠN HÀNG", "Thông tin sau khi khách hàng cung cấp đủ"]):
             with st.spinner("🔄 Node JSON Extractor & Pricing Engine đang xử lý..."):
-                json_data = extract_clean_json(full_response, user_api_key, selected_gemini_model)
+                json_data = extract_clean_json(
+                    full_response,
+                    engine_mode="ollama" if engine_choice.startswith("🖥️") else "gemini",
+                    ollama_url=ollama_url,
+                    selected_ollama_model=selected_ollama_model,
+                    api_key=user_api_key,
+                    selected_gemini_model=selected_gemini_model,
+                )
+
                 if json_data:
                     sender_addr = json_data.get("sender", {}).get("address", "") or json_data.get("route_info", {}).get("sender_area", "Hà Nội")
                     receiver_addr = json_data.get("receiver", {}).get("address", "") or json_data.get("route_info", {}).get("receiver_area", "Quảng Ninh")
