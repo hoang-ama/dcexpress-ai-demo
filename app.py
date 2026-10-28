@@ -434,11 +434,12 @@ def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str, selected
 @st.cache_data(ttl=180)
 def get_openrouter_free_models():
     """Tự động kiểm tra danh sách model đang miễn phí thực tế từ OpenRouter"""
+    preferred_option = "openrouter/free (Ưu tiên Gemma 31B ➔ Auto Free Router)"
     default_list = [
+        preferred_option,
+        "google/gemma-4-31b-it:free",
         "openrouter/free",
         "qwen/qwen-2.5-72b-instruct",
-        "qwen/qwen-2.5-7b-instruct",
-        "google/gemma-4-31b-it:free",
         "nvidia/nemotron-3.5-lightning:free",
     ]
     try:
@@ -446,10 +447,12 @@ def get_openrouter_free_models():
         if r.status_code == 200:
             data = r.json().get("data", [])
             free_models = [m["id"] for m in data if ":free" in m["id"] or m["id"] == "openrouter/free"]
-            combined = []
+            combined = [preferred_option]
+            if "google/gemma-4-31b-it:free" in free_models:
+                combined.append("google/gemma-4-31b-it:free")
             if "openrouter/free" in free_models:
                 combined.append("openrouter/free")
-            combined.extend(["qwen/qwen-2.5-72b-instruct", "qwen/qwen-2.5-7b-instruct"])
+            combined.append("qwen/qwen-2.5-72b-instruct")
             for m in free_models:
                 if m not in combined:
                     combined.append(m)
@@ -463,10 +466,10 @@ def call_qwen_cloud_api(
     api_key: str,
     system_prompt: str,
     user_prompt: str,
-    model: str = "qwen/qwen-2.5-72b-instruct:free",
+    model: str = "openrouter/free (Ưu tiên Gemma 31B ➔ Auto Free Router)",
     base_url: str = "https://openrouter.ai/api/v1",
 ) -> str:
-    """Gọi Qwen Cloud API qua OpenRouter hoặc chuẩn OpenAI API tương thích"""
+    """Gọi Qwen Cloud API qua OpenRouter hoặc chuẩn OpenAI API tương thích, hỗ trợ fallback tự động"""
     clean_url = base_url.strip().rstrip("/")
     chat_url = f"{clean_url}/chat/completions"
     headers = {
@@ -476,13 +479,22 @@ def call_qwen_cloud_api(
         "X-Title": "DCExpress AI Demo",
     }
     payload = {
-        "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.2,
     }
+
+    # Cơ chế fallback thông minh: Ưu tiên Gemma 31B trước, nếu quá tải thì để Router tự quyết định
+    if "openrouter.ai" in clean_url:
+        if "Ưu tiên Gemma 31B" in model or model in ["openrouter/free", "google/gemma-4-31b-it:free"]:
+            payload["models"] = ["google/gemma-4-31b-it:free", "openrouter/free"]
+        else:
+            payload["models"] = [model, "openrouter/free"]
+    else:
+        payload["model"] = model
+
     try:
         res = requests.post(chat_url, headers=headers, json=payload, timeout=45)
         if res.status_code == 200:
@@ -518,7 +530,7 @@ def extract_clean_json(
     api_key: str = "",
     selected_gemini_model: str = "gemini-3.8-flash",
     qwen_api_key: str = "",
-    selected_qwen_model: str = "qwen/qwen-2.5-72b-instruct:free",
+    selected_qwen_model: str = "openrouter/free (Ưu tiên Gemma 31B ➔ Auto Free Router)",
     qwen_base_url: str = "https://openrouter.ai/api/v1",
 ):
     """Trích xuất JSON sạch từ bản tổng kết thông tin đơn hàng theo Engine đã chọn"""
@@ -696,7 +708,7 @@ with st.sidebar:
     ollama_url = DEFAULT_OLLAMA_URL
     selected_ollama_model = DEFAULT_OLLAMA_MODEL
     qwen_api_key = ""
-    selected_qwen_model = "qwen/qwen-2.5-72b-instruct:free"
+    selected_qwen_model = "openrouter/free (Ưu tiên Gemma 31B ➔ Auto Free Router)"
     qwen_base_url = "https://openrouter.ai/api/v1"
     is_engine_ready = False
 
@@ -1165,11 +1177,18 @@ with col_chat:
                         "X-Title": "DCExpress AI Demo",
                     }
                     payload = {
-                        "model": selected_qwen_model,
                         "messages": qwen_messages,
                         "temperature": 0.2,
                         "stream": True,
                     }
+                    if "openrouter.ai" in qwen_base_url:
+                        if "Ưu tiên Gemma 31B" in selected_qwen_model or selected_qwen_model in ["openrouter/free", "google/gemma-4-31b-it:free"]:
+                            payload["models"] = ["google/gemma-4-31b-it:free", "openrouter/free"]
+                        else:
+                            payload["models"] = [selected_qwen_model, "openrouter/free"]
+                    else:
+                        payload["model"] = selected_qwen_model
+
                     try:
                         response = requests.post(
                             qwen_chat_url,
@@ -1201,7 +1220,6 @@ with col_chat:
                                 with st.spinner("Đang chuẩn hóa ngôn ngữ tiếng Việt..."):
                                     try:
                                         clean_payload = {
-                                            "model": selected_qwen_model,
                                             "messages": [
                                                 {
                                                     "role": "system",
@@ -1212,6 +1230,11 @@ with col_chat:
                                             "temperature": 0.1,
                                             "stream": False,
                                         }
+                                        if "openrouter.ai" in qwen_base_url:
+                                            clean_payload["models"] = ["google/gemma-4-31b-it:free", "openrouter/free"]
+                                        else:
+                                            clean_payload["model"] = selected_qwen_model
+
                                         clean_res = requests.post(
                                             qwen_chat_url,
                                             headers=headers,
