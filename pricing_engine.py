@@ -9,6 +9,22 @@ quy đổi thể tích theo chuẩn logistics và tự động áp dụng biên 
 import re
 from typing import Dict, Any, Optional, Tuple
 
+__all__ = [
+    "estimate_pricing",
+    "calculate_service_cost_tiered",
+    "calculate_service_cost",
+    "extract_shipping_info_from_dialogue",
+    "determine_route_type",
+    "detect_region",
+    "calculate_volumetric_weight",
+    "extract_dimensions_from_text",
+    "ROAD_FREIGHT_TIERS",
+    "AIR_FREIGHT_TIERS",
+    "BASE_TARIFF_ROAD",
+    "BASE_TARIFF_AIR",
+    "PROVINCE_REGIONS",
+]
+
 # Danh sách tỉnh/thành phố và phân vùng miền để nhận diện tuyến đường
 PROVINCE_REGIONS = {
     "hà nội": "mien_bac",

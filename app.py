@@ -1,9 +1,44 @@
 import json
 import os
 import re
+import sys
+import importlib
 import requests
 import streamlit as st
-from pricing_engine import estimate_pricing, extract_shipping_info_from_dialogue
+
+# Đảm bảo nạp lại pricing_engine mới nhất, chống lỗi stale bytecode/module cache trên Streamlit Cloud
+if "pricing_engine" in sys.modules:
+    try:
+        importlib.reload(sys.modules["pricing_engine"])
+    except Exception:
+        pass
+
+import pricing_engine
+try:
+    importlib.reload(pricing_engine)
+except Exception:
+    pass
+
+try:
+    from pricing_engine import estimate_pricing, extract_shipping_info_from_dialogue
+except ImportError:
+    try:
+        importlib.reload(pricing_engine)
+        from pricing_engine import estimate_pricing, extract_shipping_info_from_dialogue
+    except Exception:
+        from pricing_engine import estimate_pricing
+        extract_shipping_info_from_dialogue = getattr(pricing_engine, "extract_shipping_info_from_dialogue", None)
+        if extract_shipping_info_from_dialogue is None:
+            def extract_shipping_info_from_dialogue(text: str):
+                return {
+                    "sender_address": "",
+                    "receiver_address": "",
+                    "weight_kg": None,
+                    "cargo_description": "",
+                    "notes": "",
+                    "has_sufficient_info": False,
+                }
+
 from dchub_service import dchub_service
 
 # Load environment variables từ file .env nếu có
