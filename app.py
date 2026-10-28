@@ -3,7 +3,7 @@ import os
 import re
 import requests
 import streamlit as st
-from pricing_engine import estimate_pricing
+from pricing_engine import estimate_pricing, extract_shipping_info_from_dialogue
 from dchub_service import dchub_service
 
 # Load environment variables từ file .env nếu có
@@ -69,7 +69,10 @@ GIAI ĐOẠN 1: THU THẬP THÔNG TIN TÍNH GIÁ (CRITICAL INFO)
 GIAI ĐOẠN 2: BÁO GIÁ VÀ XÁC NHẬN ĐỒNG Ý GIÁ
 ══════════════════════════════════════════════════════════════
 - Khi đã đủ 3 nhóm thông tin trên (Điểm gửi/nhận, Hàng, Thời gian):
-  Bạn tính cước và báo giá rõ ràng (Gói Tiết kiệm đường bộ hoặc Hỏa tốc đường bay).
+  Bạn tính cước và báo giá rõ ràng (Gói Tiết kiệm đường bộ / Ghép xe tải hoặc Hỏa tốc đường bay).
+- QUY TẮC BÁO GIÁ CHUẨN: Bạn PHẢI báo giá khớp 100% với mức giá do hệ thống DC Express Pricing Engine tính toán (được cấp kèm trong thông báo hệ thống). Tuyệt đối không tự bịa ra giá khác.
+- NẾU THIẾU THÔNG TIN TÍNH GIÁ CHÍNH XÁC HOẶC ĐƠN HÀNG CẦN KHẢO SÁT XE ĐẶC THÙ:
+  Hãy thông báo cho khách: "em đang chuyển cho đối tác để kiểm tra và báo giá lại sớm ạ!" và hỏi bổ sung các thông tin còn thiếu.
 - Hỏi khách hàng xem mức giá có phù hợp để hỗ trợ lên đơn không.
 - CHỈ KHI KHÁCH ĐỒNG Ý GIÁ (ví dụ: "ok", "đồng ý", "lên đơn đi", "giá tốt"), mới chuyển sang Giai đoạn 3!
 
@@ -687,6 +690,9 @@ if "dchub_order" not in st.session_state:
 if "dchub_live_list" not in st.session_state:
     st.session_state.dchub_live_list = None
 
+if "ops_handover" not in st.session_state:
+    st.session_state.ops_handover = None
+
 # Sidebar quản lý cấu hình Engine
 with st.sidebar:
     st.header("⚙️ Cấu hình AI Engine")
@@ -934,10 +940,13 @@ with st.sidebar:
             "base_cost_vnd": pricing_res["selected_quote"]["base_cost_vnd"],
             "customer_quote_vnd": pricing_res["selected_quote"]["customer_price_vnd"],
             "margin_percent": pricing_res["selected_quote"]["margin_percent"],
+            "tier_name": pricing_res["selected_quote"].get("tier_name", ""),
+            "unit_rate_vnd": pricing_res["selected_quote"].get("unit_rate_vnd", 0),
             "is_accepted_by_customer": True,
         }
         st.session_state.pricing_details = pricing_res
         st.session_state.extracted_json = json_data
+        st.session_state.ops_handover = None
         st.session_state.driver_dispatched = False
         st.rerun()
 
@@ -954,6 +963,7 @@ with st.sidebar:
         ]
         st.session_state.extracted_json = None
         st.session_state.pricing_details = None
+        st.session_state.ops_handover = None
         st.session_state.driver_dispatched = False
         st.rerun()
 
@@ -1015,6 +1025,66 @@ with col_chat:
         with st.chat_message("user"):
             st.write(user_input)
 
+        # Trích xuất thông tin vận chuyển từ toàn bộ hội thoại để đồng bộ với Pricing Engine
+        all_user_text = "\n".join([m["content"] for m in st.session_state.messages if m["role"] == "user"])
+        shipping_info = extract_shipping_info_from_dialogue(all_user_text)
+
+        pricing_context_instruction = ""
+        is_asking_price = any(kw in user_input.lower() for kw in ["báo giá", "giá", "cước", "chi phí", "bao nhiêu", "bao tiền", "hết bao"])
+
+        if shipping_info["has_sufficient_info"]:
+            try:
+                pricing_res = estimate_pricing(
+                    sender_address=shipping_info["sender_address"],
+                    receiver_address=shipping_info["receiver_address"],
+                    actual_weight_kg=shipping_info["weight_kg"],
+                    cargo_description=shipping_info["cargo_description"],
+                )
+                st.session_state.pricing_details = pricing_res
+                st.session_state.ops_handover = None
+
+                road_opt = pricing_res["options"]["road_economy"]
+                air_opt = pricing_res["options"].get("air_express")
+                air_txt = f"\n  * Gói Hỏa tốc đường bay (DC Air Express): {air_opt['customer_price_vnd']:,} đ" if air_opt else ""
+
+                pricing_context_instruction = f"""
+[HỆ THỐNG DC EXPRESS PRICING ENGINE - ĐỒNG BỘ 100% VỚI SIDEBAR]:
+Hệ thống tính cước đã xác định bảng giá chuẩn cho đơn hàng này:
+- Tuyến đường: {pricing_res['route_info']['route_display']} ({pricing_res['route_info']['route_type']})
+- Khối lượng tính cước: {pricing_res['weight_metrics']['road_chargeable_kg']} kg (Bậc tải trọng: {road_opt.get('tier_name', '')})
+- Giá cước hệ thống quy định (Chưa VAT):
+  * Gói Đường bộ tiết kiệm / Ghép xe tải (DC Road): {road_opt['customer_price_vnd']:,} đ (Giá gốc đối tác: {road_opt['base_cost_vnd']:,} đ | Biên lợi nhuận: +30%) {air_txt}
+  * Thời gian giao dự kiến: {road_opt.get('estimated_delivery_time', '2 - 4 ngày')}
+
+QUY TẮC BẮT BUỘC ĐỒNG BỘ VỚI SIDEBAR:
+1. Khi báo giá cho khách, bạn PHẢI báo CHÍNH XÁC mức giá {road_opt['customer_price_vnd']:,} đ này (và nêu thêm gói bay nếu khách có nhu cầu).
+2. TUYỆT ĐỐI KHÔNG tự ước lượng một con số khác ngoài con số hệ thống đã tính, để đảm bảo khớp 100% với màn hình hệ thống bên phải!
+"""
+            except Exception:
+                pass
+        elif is_asking_price:
+            missing_items = []
+            if not shipping_info["sender_address"]:
+                missing_items.append("Địa chỉ gửi")
+            if not shipping_info["receiver_address"]:
+                missing_items.append("Địa chỉ nhận")
+            if not shipping_info["weight_kg"]:
+                missing_items.append("Khối lượng hoặc kích thước hàng hóa")
+
+            st.session_state.ops_handover = {
+                "needed": True,
+                "reason": f"Khách yêu cầu báo giá nhưng thiếu thông tin ({', '.join(missing_items)}) hoặc cần đối tác xác nhận tuyến",
+                "missing": missing_items,
+            }
+            pricing_context_instruction = f"""
+[LƯU Ý VẬN HÀNH - THIẾU THÔNG TIN TÍNH GIÁ]:
+Khách hàng đang hỏi giá nhưng hệ thống chưa có đủ thông tin (thiếu: {', '.join(missing_items)}).
+Hãy lịch sự thông báo cho khách:
+"Dạ em đã ghi nhận yêu cầu của mình. Hiện tại để báo giá chính xác em cần xin thêm thông tin [nêu các thông tin còn thiếu]. Trong trường hợp đơn hàng cần kiểm tra tuyến gấp, em đang chuyển cho đối tác để kiểm tra và báo giá lại sớm ạ!"
+"""
+
+        current_system_prompt = CHAT_SYSTEM_PROMPT + (f"\n\n{pricing_context_instruction}" if pricing_context_instruction else "")
+
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             full_response = ""
@@ -1029,7 +1099,7 @@ with col_chat:
                     message_placeholder.warning(full_response)
                 else:
                     ollama_chat_url = f"{ollama_url.strip().rstrip('/')}/api/chat"
-                    ollama_messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}] + [
+                    ollama_messages = [{"role": "system", "content": current_system_prompt}] + [
                         {"role": m["role"], "content": m["content"]}
                         for m in st.session_state.messages
                     ]
@@ -1104,7 +1174,7 @@ with col_chat:
                                 [f"{m['role']}: {m['content']}" for m in st.session_state.messages]
                             )
                             full_response = call_gemini_api(
-                                user_api_key, CHAT_SYSTEM_PROMPT, chat_context, selected_gemini_model
+                                user_api_key, current_system_prompt, chat_context, selected_gemini_model
                             )
                             message_placeholder.markdown(full_response)
                         except Exception as e:
@@ -1121,7 +1191,7 @@ with col_chat:
                     message_placeholder.info(full_response)
                 else:
                     qwen_chat_url = f"{qwen_base_url.strip().rstrip('/')}/chat/completions"
-                    qwen_messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}] + [
+                    qwen_messages = [{"role": "system", "content": current_system_prompt}] + [
                         {"role": m["role"], "content": m["content"]}
                         for m in st.session_state.messages
                     ]
@@ -1229,12 +1299,21 @@ with col_chat:
                 full_response = "Vui lòng cấu hình AI Engine ở Sidebar bên trái để bắt đầu trò chuyện!"
                 message_placeholder.info(full_response)
 
+        # Post-Processing: Đồng bộ và ưu tiên giá từ Sidebar Pricing Engine
+        if st.session_state.pricing_details:
+            road_price = st.session_state.pricing_details["options"]["road_economy"]["customer_price_vnd"]
+            formatted_road_price = f"{road_price:,} đ"
+            clean_resp = full_response.replace(".", "").replace(",", "")
+            # Nếu câu trả lời có báo giá nhưng số tiền bị lệch so với Sidebar
+            if any(kw in full_response.lower() for kw in ["cước vận chuyển", "gói tiết kiệm", "báo giá", "mức giá", "gói hỏa tốc"]) and str(road_price) not in clean_resp:
+                full_response += f"\n\n*(📌 **Đồng bộ hệ thống Pricing Engine**: Mức cước chuẩn cho đơn hàng này là **{formatted_road_price}** (Chưa VAT) - đã đồng bộ 100% với màn hình điều vận DC Hub).* "
+
         st.session_state.messages.append(
             {"role": "assistant", "content": full_response}
         )
 
-        # Kiểm tra nếu câu trả lời chứa Phiếu xác nhận đơn hàng hoặc bản chốt đơn
-        if any(kw in full_response for kw in ["ORDER CONFIRMATION", "PHIẾU XÁC NHẬN ĐƠN HÀNG", "Thông tin sau khi khách hàng cung cấp đủ"]):
+        # Kiểm tra nếu câu trả lời chứa Phiếu xác nhận đơn hàng hoặc bản chốt đơn hoặc đã nhận đủ thông tin đơn
+        if any(kw in full_response for kw in ["ORDER CONFIRMATION", "PHIẾU XÁC NHẬN ĐƠN HÀNG", "Thông tin sau khi khách hàng cung cấp đủ"]) or (shipping_info["has_sufficient_info"] and any(kw in full_response.lower() for kw in ["báo giá", "cước vận chuyển", "xin chào, báo giá", "gói hỏa tốc", "gói tiết kiệm"])):
             with st.spinner("🔄 Node JSON Extractor & Pricing Engine đang xử lý..."):
                 current_mode = "ollama" if engine_choice.startswith("🖥️") else ("qwen" if engine_choice.startswith("🌐") else "gemini")
                 json_data = extract_clean_json(
@@ -1250,16 +1329,16 @@ with col_chat:
                 )
 
                 if json_data:
-                    sender_addr = json_data.get("sender", {}).get("address", "") or json_data.get("route_info", {}).get("sender_area", "Hà Nội")
-                    receiver_addr = json_data.get("receiver", {}).get("address", "") or json_data.get("route_info", {}).get("receiver_area", "Quảng Ninh")
-                    cargo_weight = 1.0
+                    sender_addr = json_data.get("sender", {}).get("address", "") or json_data.get("route_info", {}).get("sender_area", shipping_info.get("sender_address", "Hà Nội"))
+                    receiver_addr = json_data.get("receiver", {}).get("address", "") or json_data.get("route_info", {}).get("receiver_area", shipping_info.get("receiver_address", "Quảng Ninh"))
+                    cargo_weight = shipping_info.get("weight_kg") or 1.0
                     try:
-                        raw_w = json_data.get("cargo", {}).get("weight_kg", 1.0)
-                        cargo_weight = float(raw_w) if raw_w else 1.0
+                        raw_w = json_data.get("cargo", {}).get("weight_kg", cargo_weight)
+                        cargo_weight = float(raw_w) if raw_w else cargo_weight
                     except (ValueError, TypeError):
-                        cargo_weight = 1.0
+                        pass
 
-                    cargo_desc = json_data.get("cargo", {}).get("description", "")
+                    cargo_desc = json_data.get("cargo", {}).get("description", "") or shipping_info.get("cargo_description", "")
                     pricing_res = estimate_pricing(
                         sender_address=sender_addr,
                         receiver_address=receiver_addr,
@@ -1271,7 +1350,10 @@ with col_chat:
                         "service_type": pricing_res["selected_quote"]["service_type"],
                         "base_cost_vnd": pricing_res["selected_quote"]["base_cost_vnd"],
                         "customer_quote_vnd": pricing_res["selected_quote"]["customer_price_vnd"],
+                        "profit_vnd": pricing_res["selected_quote"]["profit_vnd"],
                         "margin_percent": 30.0,
+                        "tier_name": pricing_res["selected_quote"].get("tier_name", ""),
+                        "unit_rate_vnd": pricing_res["selected_quote"].get("unit_rate_vnd", 0),
                         "is_accepted_by_customer": True,
                     }
                     st.session_state.pricing_details = pricing_res
@@ -1307,48 +1389,75 @@ with col_json:
                 )
                 st.divider()
 
-    if st.session_state.extracted_json:
-        st.success("✅ Đơn hàng đã chốt qua 5 Giai đoạn & Sẵn sàng đồng bộ DC Hub Portal!")
+    # CẢNH BÁO VẬN HÀNH NẾU THIẾU THÔNG TIN TÍNH GIÁ / CẦN ĐỐI TÁC BÁO GIÁ
+    if st.session_state.get("ops_handover") and st.session_state.ops_handover.get("needed"):
+        with st.container(border=True):
+            st.warning(
+                f"⚠️ **Thông báo Vận hành**: {st.session_state.ops_handover.get('reason')}  \n"
+                "📌 **Hành động**: Đã ghi nhận & chuyển điều phối viên kiểm tra với nhà xe đối tác.  \n"
+                "💬 **Phản hồi gửi khách**: *\"em đang chuyển cho đối tác để kiểm tra và báo giá lại sớm ạ!\"*"
+            )
 
-        # 1. HIỂN THỊ MODULE PRICING ENGINE
-        if st.session_state.pricing_details:
-            p_details = st.session_state.pricing_details
-            route_info = p_details["route_info"]
-            weight_m = p_details["weight_metrics"]
-            opts = p_details["options"]
+    # HIỂN THỊ MODULE PRICING ENGINE (BẬC TẢI TRỌNG & ĐỒNG BỘ GIÁ)
+    if st.session_state.pricing_details:
+        p_details = st.session_state.pricing_details
+        route_info = p_details["route_info"]
+        weight_m = p_details["weight_metrics"]
+        opts = p_details["options"]
 
-            with st.container(border=True):
-                st.markdown(f"#### 🏷️ DC Express Pricing Engine: `{route_info['route_display']}`")
+        with st.container(border=True):
+            st.markdown(f"#### 🏷️ DC Express Pricing Engine: `{route_info['route_display']}`")
+            st.caption("🟢 **Đồng bộ 100% với Chat Window** | Cơ chế Bậc tải trọng (Tiered Pricing)")
 
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.metric("Cân nặng thực tế", f"{weight_m['actual_weight_kg']} kg")
-                with c2:
-                    st.metric("Cân nặng tính cước", f"{weight_m['road_chargeable_kg']} kg")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.metric("Cân nặng thực tế", f"{weight_m['actual_weight_kg']} kg")
+            with c2:
+                st.metric("Cân nặng tính cước", f"{weight_m['road_chargeable_kg']} kg")
 
-                service_choices = []
-                service_map = {}
-
-                if "road_economy" in opts:
-                    road = opts["road_economy"]
-                    label_road = f"🚚 {road['service_name']} - {road['customer_price_vnd']:,} đ (Gốc: {road['base_cost_vnd']:,} đ | +30%)"
-                    service_choices.append(label_road)
-                    service_map[label_road] = road
-
-                if "air_express" in opts:
-                    air = opts["air_express"]
-                    label_air = f"✈️ {air['service_name']} - {air['customer_price_vnd']:,} đ (Gốc: {air['base_cost_vnd']:,} đ | +30%)"
-                    service_choices.append(label_air)
-                    service_map[label_air] = air
-
-                selected_service_label = st.radio(
-                    "Gói cước đã thỏa thuận với khách:",
-                    options=service_choices,
-                    index=0,
+            # Hiển thị thông tin Bậc tải trọng chi tiết
+            if "road_economy" in opts:
+                road = opts["road_economy"]
+                st.info(
+                    f"⚖️ **Bậc tải trọng:** `{road.get('tier_name', 'Tiêu chuẩn')}`  \n"
+                    f"📊 **Đơn giá cước:** `{road.get('unit_rate_vnd', 0):,} đ/kg` ({road.get('calc_detail', '')})  \n"
+                    f"💰 **Biên lợi nhuận:** {road.get('formula', '')}"
                 )
 
-                if selected_service_label in service_map:
-                    chosen = service_map[selected_service_label]
+            service_choices = []
+            service_map = {}
+
+            if "road_economy" in opts:
+                road = opts["road_economy"]
+                label_road = f"🚚 {road['service_name']} - {road['customer_price_vnd']:,} đ (Gốc: {road['base_cost_vnd']:,} đ | +30%)"
+                service_choices.append(label_road)
+                service_map[label_road] = road
+
+            if "air_express" in opts:
+                air = opts["air_express"]
+                label_air = f"✈️ {air['service_name']} - {air['customer_price_vnd']:,} đ (Gốc: {air['base_cost_vnd']:,} đ | +30%)"
+                service_choices.append(label_air)
+                service_map[label_air] = air
+
+            selected_service_label = st.radio(
+                "Gói cước đã thỏa thuận với khách:",
+                options=service_choices,
+                index=0,
+            )
+
+            if selected_service_label in service_map:
+                chosen = service_map[selected_service_label]
+                st.session_state.pricing_details["selected_quote"] = {
+                    "service_type": chosen["service_name"],
+                    "chargeable_weight_kg": chosen["chargeable_weight_kg"],
+                    "base_cost_vnd": chosen["base_cost_vnd"],
+                    "customer_price_vnd": chosen["customer_price_vnd"],
+                    "profit_vnd": chosen["profit_vnd"],
+                    "margin_percent": chosen["margin_percent"],
+                    "tier_name": chosen.get("tier_name", ""),
+                    "unit_rate_vnd": chosen.get("unit_rate_vnd", 0),
+                }
+                if st.session_state.extracted_json:
                     st.session_state.extracted_json["pricing"] = {
                         "service_type": chosen["service_name"],
                         "chargeable_weight_kg": chosen["chargeable_weight_kg"],
@@ -1356,8 +1465,13 @@ with col_json:
                         "customer_quote_vnd": chosen["customer_price_vnd"],
                         "profit_vnd": chosen["profit_vnd"],
                         "margin_percent": chosen["margin_percent"],
+                        "tier_name": chosen.get("tier_name", ""),
+                        "unit_rate_vnd": chosen.get("unit_rate_vnd", 0),
                         "is_accepted_by_customer": True,
                     }
+
+    if st.session_state.extracted_json:
+        st.success("✅ Đơn hàng đã chốt qua 5 Giai đoạn & Sẵn sàng đồng bộ DC Hub Portal!")
 
         # 2. BẢNG MÔ PHỎNG DCHUB PORTAL EXPRESS DASHBOARD CHUẨN THEO ẢNH THỰC TẾ
         ext = st.session_state.extracted_json
