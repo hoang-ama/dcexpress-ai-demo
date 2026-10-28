@@ -20,9 +20,9 @@ Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn the
    - Tự động áp dụng biên lợi nhuận +30% (`Giá báo KH = Giá gốc đối tác + 30%`).
    - So sánh đồng thời 2 dịch vụ: 🚚 **Đường bộ tiết kiệm** và ✈️ **Hỏa tốc đường bay**.
 3. **Đa Dạng AI Engine (Triple Engine Architecture)**:
+   - **OpenRouter Free (Cloud)**: Tự động điều hướng thông minh (ưu tiên `google/gemma-4-31b-it:free`, fallback `openrouter/free`) hoàn toàn miễn phí 0đ, không cần thẻ ngân hàng.
    - **Google Gemini API (Cloud)**: Siêu tốc độ, ưu tiên các dòng model mới nhất (`gemini-3.8-flash`, v.v.).
    - **Ollama AI Engine (Local / Cloudflare Tunnel)**: Chạy on-premise 0đ token, hỗ trợ expose remote qua Cloudflare Tunnel.
-   - **Qwen Cloud API (OpenRouter Free / Alibaba DashScope)**: Sử dụng các model mã nguồn mở hàng đầu như `qwen/qwen-2.5-72b-instruct:free` hoàn toàn miễn phí, không cần thẻ ngân hàng.
 4. **DCHub Portal Integration & Driver Dispatch**:
    - Tự động bóc tách JSON Payload chuẩn hóa theo schema đơn hàng hoàn chỉnh.
    - Mô phỏng quy trình tạo Lead và Điều phối tài xế (Bắn SMS/Zalo thông tin tài xế cho khách).
