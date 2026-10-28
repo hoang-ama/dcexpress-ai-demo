@@ -43,7 +43,7 @@ Tài liệu này hướng dẫn chi tiết dành cho Đội ngũ Kỹ thuật & 
 2. Nhập URL máy chủ công khai của bạn:
    ```
    https://api.dcexpress.vn/webhook
-   # (Hoặc link ngrok khi test local: https://xxxx.ngrok-free.app/webhook)
+   # (Hoặc link Cloudflare Tunnel khi test local: https://xxxx.trycloudflare.com/webhook)
    ```
 3. Zalo sẽ tự động gửi một request `GET /webhook?hub.challenge=...` để kiểm tra.
    - Middleware `zalo_middleware.py` đã cài đặt sẵn cơ chế phản hồi `challenge` tự động, Webhook sẽ được verify **thành công ngay tức thì**.

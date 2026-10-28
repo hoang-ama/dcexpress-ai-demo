@@ -9,10 +9,12 @@ __pycache__/
 
 # Streamlit secrets
 .streamlit/secrets.toml
+!.streamlit/secrets.toml.example
 
 # Environment & IDE
 .env
 .env.*
+!.env.example
 .DS_Store
 .idea/
 .vscode/

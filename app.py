@@ -6,6 +6,13 @@ import streamlit as st
 from pricing_engine import estimate_pricing
 from dchub_service import dchub_service
 
+# Load environment variables từ file .env nếu có
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # Kiểm tra thư viện Google GenAI SDK chính thức
 try:
     from google import genai
@@ -424,6 +431,41 @@ def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str, selected
     return f"Lỗi gọi Gemini API: {last_error}"
 
 
+def call_qwen_cloud_api(
+    api_key: str,
+    system_prompt: str,
+    user_prompt: str,
+    model: str = "qwen/qwen-2.5-72b-instruct:free",
+    base_url: str = "https://openrouter.ai/api/v1",
+) -> str:
+    """Gọi Qwen Cloud API qua OpenRouter hoặc chuẩn OpenAI API tương thích"""
+    clean_url = base_url.strip().rstrip("/")
+    chat_url = f"{clean_url}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key.strip()}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://dcexpress-ai-demo.streamlit.app",
+        "X-Title": "DCExpress AI Demo",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.2,
+    }
+    try:
+        res = requests.post(chat_url, headers=headers, json=payload, timeout=45)
+        if res.status_code == 200:
+            data = res.json()
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        else:
+            raise Exception(f"HTTP {res.status_code}: {res.text}")
+    except Exception as e:
+        raise Exception(f"Lỗi gọi Qwen API: {e}")
+
+
 def parse_clean_json_regex(text: str):
     """Trích xuất khối JSON từ văn bản"""
     match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
@@ -447,6 +489,9 @@ def extract_clean_json(
     selected_ollama_model: str = DEFAULT_OLLAMA_MODEL,
     api_key: str = "",
     selected_gemini_model: str = "gemini-3.8-flash",
+    qwen_api_key: str = "",
+    selected_qwen_model: str = "qwen/qwen-2.5-72b-instruct:free",
+    qwen_base_url: str = "https://openrouter.ai/api/v1",
 ):
     """Trích xuất JSON sạch từ bản tổng kết thông tin đơn hàng theo Engine đã chọn"""
     # 1. Nếu chọn hoặc ưu tiên Ollama
@@ -477,8 +522,24 @@ def extract_clean_json(
         except Exception as e:
             st.warning(f"Ollama Extraction gặp sự cố: {e}")
 
-    # 2. Nếu chọn hoặc fallback sang Gemini API
-    if api_key:
+    # 2. Nếu chọn Qwen Cloud API (OpenRouter / DashScope)
+    elif engine_mode == "qwen" and qwen_api_key:
+        try:
+            content = call_qwen_cloud_api(
+                api_key=qwen_api_key,
+                system_prompt=EXTRACTION_SYSTEM_PROMPT,
+                user_prompt=f"Hãy trích xuất văn bản sau ra JSON sạch:\n{summary_text}",
+                model=selected_qwen_model,
+                base_url=qwen_base_url,
+            )
+            res = parse_clean_json_regex(content)
+            if res:
+                return res
+        except Exception as e:
+            st.warning(f"Qwen Extraction gặp sự cố: {e}")
+
+    # 3. Nếu chọn hoặc fallback sang Gemini API
+    elif api_key:
         try:
             content = call_gemini_api(
                 api_key,
@@ -591,24 +652,108 @@ with st.sidebar:
     st.header("⚙️ Cấu hình AI Engine")
 
     # 1. Cho phép người dùng chủ động lựa chọn Engine
-    local_ollama_detected = check_ollama_available(DEFAULT_OLLAMA_URL)
-    default_engine_idx = 1 if local_ollama_detected else 0
-
     engine_choice = st.radio(
         "Lựa chọn AI Engine:",
-        options=["☁️ Google Gemini API (Cloud)", "🖥️ Ollama AI Engine (Local / Remote)"],
-        index=default_engine_idx,
-        help="Chọn Google Gemini API để chạy trên đám mây hoặc Ollama để tự chạy model local (0đ token)."
+        options=[
+            "🌐 Qwen Cloud API (OpenRouter Free / Direct)",
+            "☁️ Google Gemini API (Cloud)",
+            "🖥️ Ollama AI Engine (Local / Remote)",
+        ],
+        index=0,
+        help="Phương án 1 (Khuyên dùng): Qwen 2.5 72B hoàn toàn miễn phí qua OpenRouter, không cần cấu hình local hay thẻ ngân hàng."
     )
 
     selected_gemini_model = "gemini-3.8-flash"
     user_api_key = ""
     ollama_url = DEFAULT_OLLAMA_URL
     selected_ollama_model = DEFAULT_OLLAMA_MODEL
+    qwen_api_key = ""
+    selected_qwen_model = "qwen/qwen-2.5-72b-instruct:free"
+    qwen_base_url = "https://openrouter.ai/api/v1"
     is_engine_ready = False
 
-    # CHẾ ĐỘ 1: GOOGLE GEMINI API (CLOUD)
-    if engine_choice == "☁️ Google Gemini API (Cloud)":
+    # CHẾ ĐỘ 1: QWEN CLOUD API (OPENROUTER FREE / ALIBABA DASHSCOPE)
+    if engine_choice.startswith("🌐"):
+        st.markdown("**Cấu hình Qwen Cloud API:**")
+        qwen_provider = st.radio(
+            "Nguồn kết nối Qwen:",
+            options=[
+                "OpenRouter (Miễn phí 100% - Khuyên dùng)",
+                "Alibaba DashScope (Chính hãng Qwen)",
+                "Tùy chỉnh OpenAI-compatible",
+            ],
+            index=0,
+            help="OpenRouter cung cấp model Qwen 2.5 72B hoàn toàn miễn phí không cần add thẻ ngân hàng."
+        )
+
+        openrouter_key_env = os.getenv("OPENROUTER_API_KEY", "")
+        try:
+            openrouter_key_secrets = st.secrets.get("OPENROUTER_API_KEY", "")
+        except Exception:
+            openrouter_key_secrets = ""
+        default_openrouter_key = openrouter_key_secrets or openrouter_key_env
+
+        if qwen_provider.startswith("OpenRouter"):
+            qwen_base_url = "https://openrouter.ai/api/v1"
+            qwen_api_key = st.text_input(
+                "OpenRouter API Key:",
+                value=default_openrouter_key,
+                type="password",
+                help="Lấy API Key miễn phí tại https://openrouter.ai/keys (Không cần thẻ tín dụng)"
+            )
+            selected_qwen_model = st.selectbox(
+                "Chọn Qwen Model (Free Tier):",
+                options=[
+                    "qwen/qwen-2.5-72b-instruct:free",
+                    "qwen/qwen-2.5-7b-instruct:free",
+                    "qwen/qwen-2.5-coder-32b-instruct:free",
+                    "qwen/qwq-32b:free",
+                ],
+                index=0,
+                help="Model 72B Instruct cho khả năng suy luận logic và tiếng Việt xuất sắc nhất!"
+            )
+            st.caption("👉 Lấy API Key miễn phí 100% tại: [OpenRouter Keys](https://openrouter.ai/keys) *(Đăng ký bằng Google/GitHub 30s)*")
+
+        elif qwen_provider.startswith("Alibaba"):
+            qwen_base_url = st.text_input(
+                "DashScope Base URL:",
+                value="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                help="Bản quốc tế: https://dashscope-intl.aliyuncs.com/compatible-mode/v1 hoặc bản nội địa TQ: https://dashscope.aliyuncs.com/compatible-mode/v1"
+            )
+            dashscope_key_env = os.getenv("DASHSCOPE_API_KEY", "")
+            try:
+                dashscope_key_secrets = st.secrets.get("DASHSCOPE_API_KEY", "")
+            except Exception:
+                dashscope_key_secrets = ""
+            qwen_api_key = st.text_input(
+                "DashScope API Key:",
+                value=dashscope_key_secrets or dashscope_key_env,
+                type="password",
+                help="Lấy API Key từ Alibaba Cloud Model Studio Console"
+            )
+            selected_qwen_model = st.selectbox(
+                "Chọn Qwen Model:",
+                options=["qwen-plus", "qwen-turbo", "qwen-max", "qwen2.5-72b-instruct"],
+                index=0
+            )
+            st.caption("👉 Lấy API Key tại: [Alibaba Cloud Model Studio](https://www.alibabacloud.com/help/en/model-studio/)")
+
+        else:
+            qwen_base_url = st.text_input(
+                "Base URL (OpenAI-compatible):",
+                value="https://openrouter.ai/api/v1"
+            )
+            qwen_api_key = st.text_input("API Key:", value="", type="password")
+            selected_qwen_model = st.text_input("Model ID:", value="qwen/qwen-2.5-72b-instruct:free")
+
+        if qwen_api_key:
+            is_engine_ready = True
+            st.success(f"🟢 **Sẵn sàng gọi Qwen:** `{selected_qwen_model}`")
+        else:
+            st.info("ℹ️ Nhập API Key hoặc cấu hình `OPENROUTER_API_KEY` trong file `.env` hoặc Streamlit Secrets.")
+
+    # CHẾ ĐỘ 2: GOOGLE GEMINI API (CLOUD)
+    elif engine_choice.startswith("☁️"):
         gemini_key_env = os.getenv("GEMINI_API_KEY", "")
         try:
             gemini_key_secrets = st.secrets.get("GEMINI_API_KEY", "")
@@ -643,14 +788,14 @@ with st.sidebar:
         else:
             st.info("ℹ️ Nhập API Key hoặc cấu hình `GEMINI_API_KEY` trong Secrets để kích hoạt.")
 
-    # CHẾ ĐỘ 2: OLLAMA AI ENGINE (LOCAL HOẶC REMOTE QUA NGROK)
+    # CHẾ ĐỘ 3: OLLAMA AI ENGINE (LOCAL HOẶC REMOTE QUA CLOUDFLARE TUNNEL)
     else:
         st.markdown("**Cấu hình máy chủ Ollama:**")
         saved_url = st.session_state.get("ollama_url_input", DEFAULT_OLLAMA_URL)
         ollama_url = st.text_input(
             "Ollama Server URL:",
             value=saved_url,
-            help="Chạy Local Mac: http://localhost:11434. Chạy trên Streamlit Cloud: nhập URL Ngrok/Cloudflare (vd: https://xxxx.ngrok-free.app)."
+            help="Chạy Local Mac: http://localhost:11434. Chạy trên Streamlit Cloud: nhập URL Cloudflare Tunnel (vd: https://xxxx.trycloudflare.com)."
         )
         st.session_state.ollama_url_input = ollama_url
 
@@ -672,14 +817,17 @@ with st.sidebar:
             with st.expander("🌐 Cách kết nối Ollama với Streamlit Cloud", expanded=True):
                 st.markdown(
                     """
-                    Khi mở web trên **`streamlit.app` (Cloud)**, server không thể gọi trực tiếp `localhost` của máy Mac. Để kết nối:
-                    1. Mở Terminal trên máy tính, chạy:
+                    Khi mở web trên **`streamlit.app` (Cloud)**, server không thể gọi trực tiếp `localhost` của máy Mac. Để kết nối bằng **Cloudflare Tunnel (Hoàn toàn Miễn phí, Ổn định)**:
+
+                    1. **Mở Terminal trên máy tính**, chạy lệnh tạo đường truyền tức thì:
                        ```bash
-                       ngrok http 11434
+                       cloudflared tunnel --url http://localhost:11434
                        ```
-                       *(Hoặc `cloudflared tunnel --url http://localhost:11434`)*
-                    2. Copy link công khai (ví dụ: `https://xxxx.ngrok-free.app`).
-                    3. Dán vào ô **Ollama Server URL** ở trên và nhấn Enter!
+                       *(Nếu máy Mac chưa cài đặt, chỉ cần chạy `brew install cloudflared` một lần duy nhất)*.
+                    2. Tìm dòng link công khai có đuôi `.trycloudflare.com` trong kết quả hiển thị (ví dụ: `https://abcd-efgh-1234.trycloudflare.com`) và copy lại.
+                    3. Dán link vừa copy vào ô **Ollama Server URL** ở trên và nhấn Enter!
+                    
+                    *(💡 **Lưu ý**: Giữ cửa sổ Terminal luôn mở khi đang dùng web để duy trì kết nối tunnel).*
                     """
                 )
 
@@ -762,13 +910,17 @@ with st.sidebar:
         ]
 
         # Tính toán cước phí và trích xuất JSON
+        current_mode = "ollama" if engine_choice.startswith("🖥️") else ("qwen" if engine_choice.startswith("🌐") else "gemini")
         json_data = extract_clean_json(
             SAMPLE_ORDER_TEXT,
-            engine_mode="ollama" if engine_choice.startswith("🖥️") else "gemini",
+            engine_mode=current_mode,
             ollama_url=ollama_url,
             selected_ollama_model=selected_ollama_model,
             api_key=user_api_key,
             selected_gemini_model=selected_gemini_model,
+            qwen_api_key=qwen_api_key,
+            selected_qwen_model=selected_qwen_model,
+            qwen_base_url=qwen_base_url,
         )
         pricing_res = estimate_pricing(
             sender_address="144 Đ. Xuân Thủy, Cầu Giấy, Hà Nội, Việt Nam",
@@ -866,12 +1018,12 @@ with col_chat:
             message_placeholder = st.empty()
             full_response = ""
 
-            # TH1: Chạy Ollama AI Engine (Local hoặc Ngrok Remote)
+            # TH1: Chạy Ollama AI Engine (Local hoặc Remote qua Cloudflare Tunnel)
             if engine_choice.startswith("🖥️"):
                 if not is_engine_ready:
                     full_response = (
                         f"Chưa kết nối được với máy chủ Ollama tại `{ollama_url}`. "
-                        "Vui lòng kiểm tra lại URL hoặc chuyển sang chế độ **☁️ Google Gemini API (Cloud)** ở thanh Sidebar bên trái!"
+                        "Vui lòng kiểm tra lại URL hoặc chuyển sang chế độ **☁️ Google Gemini API (Cloud)** / **🌐 Qwen Cloud API** ở thanh Sidebar bên trái!"
                     )
                     message_placeholder.warning(full_response)
                 else:
@@ -958,7 +1110,96 @@ with col_chat:
                             full_response = f"Lỗi xử lý Gemini: {e}"
                             message_placeholder.error(full_response)
 
-            # TH3: Chế độ Fallback thông báo
+            # TH3: Chạy Qwen Cloud API (OpenRouter Free / Direct)
+            elif engine_choice.startswith("🌐"):
+                if not qwen_api_key:
+                    full_response = (
+                        "Vui lòng nhập **OpenRouter / Qwen API Key** ở thanh Sidebar bên trái để trò chuyện, "
+                        "hoặc bấm nút **'Nạp kịch bản mẫu 5 Giai đoạn'** để trải nghiệm nhanh!"
+                    )
+                    message_placeholder.info(full_response)
+                else:
+                    qwen_chat_url = f"{qwen_base_url.strip().rstrip('/')}/chat/completions"
+                    qwen_messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}] + [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in st.session_state.messages
+                    ]
+                    headers = {
+                        "Authorization": f"Bearer {qwen_api_key.strip()}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://dcexpress-ai-demo.streamlit.app",
+                        "X-Title": "DCExpress AI Demo",
+                    }
+                    payload = {
+                        "model": selected_qwen_model,
+                        "messages": qwen_messages,
+                        "temperature": 0.2,
+                        "stream": True,
+                    }
+                    try:
+                        response = requests.post(
+                            qwen_chat_url,
+                            headers=headers,
+                            json=payload,
+                            stream=True,
+                            timeout=60,
+                        )
+                        if response.status_code == 200:
+                            for line in response.iter_lines():
+                                if line:
+                                    line_str = line.decode("utf-8").strip()
+                                    if line_str.startswith("data: "):
+                                        chunk_str = line_str[6:].strip()
+                                        if chunk_str == "[DONE]":
+                                            break
+                                        try:
+                                            chunk_json = json.loads(chunk_str)
+                                            delta = chunk_json.get("choices", [{}])[0].get("delta", {})
+                                            token = delta.get("content", "")
+                                            if token:
+                                                full_response += token
+                                                message_placeholder.markdown(full_response + "▌")
+                                        except Exception:
+                                            pass
+
+                            # Kiểm tra nếu câu trả lời bị lọt ký tự chữ Hán (đặc tính của dòng Qwen)
+                            if contains_chinese(full_response):
+                                with st.spinner("Đang chuẩn hóa ngôn ngữ tiếng Việt..."):
+                                    try:
+                                        clean_payload = {
+                                            "model": selected_qwen_model,
+                                            "messages": [
+                                                {
+                                                    "role": "system",
+                                                    "content": "Translate and rewrite the following text into 100% natural Vietnamese. Absolutely NO Chinese characters.",
+                                                },
+                                                {"role": "user", "content": full_response},
+                                            ],
+                                            "temperature": 0.1,
+                                            "stream": False,
+                                        }
+                                        clean_res = requests.post(
+                                            qwen_chat_url,
+                                            headers=headers,
+                                            json=clean_payload,
+                                            timeout=25,
+                                        )
+                                        if clean_res.status_code == 200:
+                                            cand = clean_res.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                                            if cand and not contains_chinese(cand):
+                                                full_response = cand
+                                    except Exception:
+                                        pass
+
+                            message_placeholder.markdown(full_response)
+                        else:
+                            full_response = f"Lỗi phản hồi từ Qwen API ({response.status_code}): {response.text}"
+                            message_placeholder.error(full_response)
+                    except Exception as e:
+                        full_response = f"Lỗi kết nối Qwen API: {e}"
+                        message_placeholder.error(full_response)
+
+            # TH4: Chế độ Fallback thông báo
             else:
                 full_response = "Vui lòng cấu hình AI Engine ở Sidebar bên trái để bắt đầu trò chuyện!"
                 message_placeholder.info(full_response)
@@ -970,13 +1211,17 @@ with col_chat:
         # Kiểm tra nếu câu trả lời chứa Phiếu xác nhận đơn hàng hoặc bản chốt đơn
         if any(kw in full_response for kw in ["ORDER CONFIRMATION", "PHIẾU XÁC NHẬN ĐƠN HÀNG", "Thông tin sau khi khách hàng cung cấp đủ"]):
             with st.spinner("🔄 Node JSON Extractor & Pricing Engine đang xử lý..."):
+                current_mode = "ollama" if engine_choice.startswith("🖥️") else ("qwen" if engine_choice.startswith("🌐") else "gemini")
                 json_data = extract_clean_json(
                     full_response,
-                    engine_mode="ollama" if engine_choice.startswith("🖥️") else "gemini",
+                    engine_mode=current_mode,
                     ollama_url=ollama_url,
                     selected_ollama_model=selected_ollama_model,
                     api_key=user_api_key,
                     selected_gemini_model=selected_gemini_model,
+                    qwen_api_key=qwen_api_key,
+                    selected_qwen_model=selected_qwen_model,
+                    qwen_base_url=qwen_base_url,
                 )
 
                 if json_data:

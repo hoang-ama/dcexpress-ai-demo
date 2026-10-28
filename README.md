@@ -2,13 +2,13 @@
 
 [![DC Express AI Agent CI](https://github.com/hoang-ama/dcexpress-ai-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/hoang-ama/dcexpress-ai-demo/actions/workflows/ci.yml)
 
-Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn theo **Kịch bản tư vấn tự nhiên 5 giai đoạn (Progressive Disclosure)** giúp khách không bị ngợp form, tích hợp RAG Pricing Engine (+30% Margin), Order Confirmation và trích xuất JSON sạch chuẩn API DC Hub Portal (`portal.dichung.vn`).
+Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn theo **Kịch bản tư vấn tự nhiên 5 giai đoạn (Progressive Disclosure)** giúp khách không bị ngợp form, tích hợp RAG Pricing Engine (+30% Margin), Order Confirmation và trích xuất JSON sạch chuẩn API DCHub Portal (`portal.dichung.vn`).
 
 ---
 
 ## 🌟 Tính Năng Nổi Bật
 
-1. **Kịch Bản Tư Vấn Tự Nhiên (Progressive Slot-Filling**:
+1. **Kịch Bản Tư Vấn Tự Nhiên (Progressive Slot-Filling)**:
    - **Giai đoạn 1**: Thu thập nhẹ nhàng 3 thông tin critical để tính giá (Điểm gửi/nhận ➔ Hàng hóa ➔ Thời gian & Ghi chú). Không hỏi dồn dập tên/SĐT ngay từ đầu.
    - **Giai đoạn 2**: Báo giá minh bạch (Đường bộ tiết kiệm / Hỏa tốc đường bay) & Chốt đồng ý giá với khách.
    - **Giai đoạn 3**: Thu thập thông tin vận hành (Liên lạc 2 đầu ➔ Bên thanh toán ➔ Hình thức thanh toán).
@@ -19,10 +19,11 @@ Hệ thống AI Agent tự động hóa tiếp nhận nhu cầu đặt đơn the
    - Quy đổi khối lượng thể tích theo chuẩn logistics: Đường bay (`/6000`), Đường bộ (`/5000`).
    - Tự động áp dụng biên lợi nhuận +30% (`Giá báo KH = Giá gốc đối tác + 30%`).
    - So sánh đồng thời 2 dịch vụ: 🚚 **Đường bộ tiết kiệm** và ✈️ **Hỏa tốc đường bay**.
-3. **Dual Engine Kiến Trúc Hybrid**:
-   - **Local Mode (0đ Token)**: Chạy qua Ollama `qwen2.5:7b` On-premise.
-   - **Cloud Mode**: Tự động Fallback sang Google Gemini khi triển khai Online trên Server/Cloud.
-4. **DC Hub Portal Integration & Driver Dispatch**:
+3. **Đa Dạng AI Engine (Triple Engine Architecture)**:
+   - **Google Gemini API (Cloud)**: Siêu tốc độ, ưu tiên các dòng model mới nhất (`gemini-3.8-flash`, v.v.).
+   - **Ollama AI Engine (Local / Cloudflare Tunnel)**: Chạy on-premise 0đ token, hỗ trợ expose remote qua Cloudflare Tunnel.
+   - **Qwen Cloud API (OpenRouter Free / Alibaba DashScope)**: Sử dụng các model mã nguồn mở hàng đầu như `qwen/qwen-2.5-72b-instruct:free` hoàn toàn miễn phí, không cần thẻ ngân hàng.
+4. **DCHub Portal Integration & Driver Dispatch**:
    - Tự động bóc tách JSON Payload chuẩn hóa theo schema đơn hàng hoàn chỉnh.
    - Mô phỏng quy trình tạo Lead và Điều phối tài xế (Bắn SMS/Zalo thông tin tài xế cho khách).
 

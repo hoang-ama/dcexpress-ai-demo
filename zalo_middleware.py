@@ -22,6 +22,13 @@ import time
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
+# Load environment variables từ file .env nếu có
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 import requests
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
