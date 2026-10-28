@@ -431,6 +431,34 @@ def call_gemini_api(api_key: str, system_prompt: str, user_prompt: str, selected
     return f"Lỗi gọi Gemini API: {last_error}"
 
 
+@st.cache_data(ttl=180)
+def get_openrouter_free_models():
+    """Tự động kiểm tra danh sách model đang miễn phí thực tế từ OpenRouter"""
+    default_list = [
+        "openrouter/free",
+        "qwen/qwen-2.5-72b-instruct",
+        "qwen/qwen-2.5-7b-instruct",
+        "google/gemma-4-31b-it:free",
+        "nvidia/nemotron-3.5-lightning:free",
+    ]
+    try:
+        r = requests.get("https://openrouter.ai/api/v1/models", timeout=3.5)
+        if r.status_code == 200:
+            data = r.json().get("data", [])
+            free_models = [m["id"] for m in data if ":free" in m["id"] or m["id"] == "openrouter/free"]
+            combined = []
+            if "openrouter/free" in free_models:
+                combined.append("openrouter/free")
+            combined.extend(["qwen/qwen-2.5-72b-instruct", "qwen/qwen-2.5-7b-instruct"])
+            for m in free_models:
+                if m not in combined:
+                    combined.append(m)
+            return combined
+    except Exception:
+        pass
+    return default_list
+
+
 def call_qwen_cloud_api(
     api_key: str,
     system_prompt: str,
@@ -701,18 +729,24 @@ with st.sidebar:
                 type="password",
                 help="Lấy API Key miễn phí tại https://openrouter.ai/keys (Không cần thẻ tín dụng)"
             )
-            selected_qwen_model = st.selectbox(
-                "Chọn Qwen Model (Free Tier):",
-                options=[
-                    "qwen/qwen-2.5-72b-instruct:free",
-                    "qwen/qwen-2.5-7b-instruct:free",
-                    "qwen/qwen-2.5-coder-32b-instruct:free",
-                    "qwen/qwq-32b:free",
-                ],
+
+            available_or_models = get_openrouter_free_models()
+            model_options = available_or_models + ["-- Nhập Model Slug khác --"]
+
+            selected_choice = st.selectbox(
+                "Chọn OpenRouter Model:",
+                options=model_options,
                 index=0,
-                help="Model 72B Instruct cho khả năng suy luận logic và tiếng Việt xuất sắc nhất!"
+                help="Chọn 'openrouter/free' để dùng model miễn phí tự động, hoặc chọn model Qwen nếu tài khoản có credit."
             )
-            st.caption("👉 Lấy API Key miễn phí 100% tại: [OpenRouter Keys](https://openrouter.ai/keys) *(Đăng ký bằng Google/GitHub 30s)*")
+            if selected_choice == "-- Nhập Model Slug khác --":
+                selected_qwen_model = st.text_input("Nhập Model Slug:", value="qwen/qwen-2.5-72b-instruct")
+            else:
+                selected_qwen_model = selected_choice
+
+            if "qwen" in selected_qwen_model.lower() and not selected_qwen_model.endswith(":free"):
+                st.info("💡 *Lưu ý: OpenRouter hiện áp dụng mức phí siêu rẻ (~$0.0003/tin nhắn) cho model Qwen (yêu cầu nạp tối thiểu $1 credit). Để dùng 0đ hoàn toàn, chọn 'openrouter/free' hoặc chuyển sang Ollama local.*")
+            st.caption("👉 Lấy API Key tại: [OpenRouter Keys](https://openrouter.ai/keys) *(Đăng ký bằng Google/GitHub 30s)*")
 
         elif qwen_provider.startswith("Alibaba"):
             qwen_base_url = st.text_input(
@@ -1193,8 +1227,21 @@ with col_chat:
 
                             message_placeholder.markdown(full_response)
                         else:
-                            full_response = f"Lỗi phản hồi từ Qwen API ({response.status_code}): {response.text}"
-                            message_placeholder.error(full_response)
+                            err_text = response.text
+                            if "unavailable for free" in err_text:
+                                full_response = (
+                                    f"⚠️ **Model `{selected_qwen_model}` hiện không còn hỗ trợ miễn phí trên OpenRouter!**\n\n"
+                                    "OpenRouter vừa cập nhật chính sách và chuyển model này sang bản tính phí (slug: `qwen/qwen-2.5-72b-instruct`).\n\n"
+                                    "💡 **Các giải pháp sử dụng ngay:**\n"
+                                    "1. **Dùng Qwen 2.5 hoàn toàn MIỄN PHÍ 100% (Khuyên dùng)**: Máy Mac của bạn đã cài sẵn Ollama `qwen2.5:7b`! Hãy chọn **🖥️ Ollama AI Engine (Local / Remote)** ở Sidebar bên trái.\n"
+                                    "2. **Dùng Cloud AI Miễn Phí 100%**: Chọn **☁️ Google Gemini API (Cloud)** ở Sidebar (1500 request/ngày 0đ từ Google AI Studio).\n"
+                                    "3. **Dùng Model Free của OpenRouter**: Ở Sidebar bên trái, đổi Model thành `openrouter/free` hoặc `google/gemma-4-31b-it:free`.\n"
+                                    "4. **Nếu tài khoản OpenRouter có nạp credit**: Đổi Model thành `qwen/qwen-2.5-72b-instruct`."
+                                )
+                                message_placeholder.warning(full_response)
+                            else:
+                                full_response = f"Lỗi phản hồi từ Qwen API ({response.status_code}): {err_text}"
+                                message_placeholder.error(full_response)
                     except Exception as e:
                         full_response = f"Lỗi kết nối Qwen API: {e}"
                         message_placeholder.error(full_response)
